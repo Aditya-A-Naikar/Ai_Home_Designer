@@ -24,11 +24,11 @@ interface Room {
 }
 
 const rooms: Room[] = [
-  { id: "living", label: "Living Room", x: 20, y: 20, w: 140, h: 100, color: "#e0e7ff", hoverColor: "#c7d2fe" },
-  { id: "kitchen", label: "Kitchen", x: 170, y: 20, w: 100, h: 100, color: "#dcfce7", hoverColor: "#bbf7d0" },
-  { id: "bedroom1", label: "Bedroom 1", x: 20, y: 130, w: 120, h: 90, color: "#fce7f3", hoverColor: "#fbcfe8" },
-  { id: "bedroom2", label: "Bedroom 2", x: 150, y: 130, w: 120, h: 90, color: "#fef3c7", hoverColor: "#fde68a" },
-  { id: "bathroom", label: "Bath", x: 280, y: 20, w: 60, h: 90, color: "#e0f2fe", hoverColor: "#bae6fd" },
+  { id: "living", label: "Living Room", x: 25, y: 25, w: 140, h: 90, color: "#e0e7ff", hoverColor: "#c7d2fe" },
+  { id: "kitchen", label: "Kitchen", x: 173, y: 25, w: 95, h: 90, color: "#dcfce7", hoverColor: "#bbf7d0" },
+  { id: "bathroom", label: "Bath", x: 276, y: 25, w: 59, h: 90, color: "#e0f2fe", hoverColor: "#bae6fd" },
+  { id: "bedroom1", label: "Bedroom 1", x: 25, y: 123, w: 145, h: 92, color: "#fce7f3", hoverColor: "#fbcfe8" },
+  { id: "bedroom2", label: "Bedroom 2", x: 178, y: 123, w: 157, h: 92, color: "#fef3c7", hoverColor: "#fde68a" },
 ];
 
 const aiSuggestions: Record<string, string> = {
@@ -108,7 +108,7 @@ export function InteractiveTeaser() {
         ))}
 
         {/* Outer boundary */}
-        <rect x="10" y="10" width="330" height="220" fill="none" stroke="#64748b" strokeWidth="2" rx="2" />
+        <rect x="15" y="15" width="330" height="210" fill="none" stroke="#64748b" strokeWidth="2.5" rx="4" />
 
         {/* Rooms */}
         {rooms.map((room) => {
@@ -124,19 +124,19 @@ export function InteractiveTeaser() {
               onKeyDown={(e) => e.key === "Enter" && handleRoomClick(room.id)}
             >
               <rect
-                x={room.x + 10}
-                y={room.y + 10}
+                x={room.x}
+                y={room.y}
                 width={room.w}
                 height={room.h}
                 fill={isSelected ? room.hoverColor : room.color}
                 stroke={isSelected ? "#6366f1" : "#94a3b8"}
                 strokeWidth={isSelected ? 2 : 1}
-                rx="2"
+                rx="3"
                 className="transition-all"
               />
               <text
-                x={room.x + 10 + room.w / 2}
-                y={room.y + 10 + room.h / 2 - 4}
+                x={room.x + room.w / 2}
+                y={room.y + room.h / 2 - 4}
                 textAnchor="middle"
                 dominantBaseline="middle"
                 fontSize="9"
@@ -147,8 +147,8 @@ export function InteractiveTeaser() {
               </text>
               {/* Dimension hint */}
               <text
-                x={room.x + 10 + room.w / 2}
-                y={room.y + 10 + room.h / 2 + 10}
+                x={room.x + room.w / 2}
+                y={room.y + room.h / 2 + 10}
                 textAnchor="middle"
                 dominantBaseline="middle"
                 fontSize="7.5"
@@ -161,7 +161,7 @@ export function InteractiveTeaser() {
         })}
 
         {/* Compass indicator */}
-        <text x="330" y="240" fontSize="10" fill="#94a3b8" textAnchor="end">N↑</text>
+        <text x="335" y="235" fontSize="10" fill="#94a3b8" textAnchor="end">N↑</text>
       </svg>
 
       {/* AI Suggestion bubble */}

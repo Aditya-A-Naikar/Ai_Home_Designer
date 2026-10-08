@@ -1,4 +1,6 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 /* Design tokens */
 :root {
@@ -36,10 +38,16 @@ html {
   top: 0.5rem;
 }
 
-/* Animate-in utility (simple CSS-only fade for the teaser) */
+/* Simple CSS-only animation utility */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .animate-in {
