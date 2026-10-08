@@ -12,7 +12,9 @@ import {
   Sun, 
   Palette,
   Compass,
-  Sparkles
+  Sparkles,
+  Footprints,
+  Camera
 } from 'lucide-react';
 import { 
   calculateSolarPosition, 
@@ -25,6 +27,9 @@ import {
   WallFinishType 
 } from '@/core/geometry/pbr-materials';
 import { Door, Window } from '@/core/domain/types';
+import { createProp3DMesh } from '@/core/geometry/furniture-3d';
+import { WalkthroughController } from '@/core/geometry/walkthrough-controller';
+import { AIRenderStudioModal } from './ai-render-studio-modal';
 
 export function Viewport3D() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -42,6 +47,13 @@ export function Viewport3D() {
   const [showMaterialTray, setShowMaterialTray] = useState<boolean>(false);
   const [floorFinish, setFloorFinish] = useState<FloorFinishType>('teak_hardwood');
   const [wallFinish, setWallFinish] = useState<WallFinishType>('white_plaster');
+
+  // Phase 11 & Phase 16: Walkthrough & AI Render Studio
+  const [walkthroughMode, setWalkthroughMode] = useState<boolean>(false);
+  const [currentRoomName, setCurrentRoomName] = useState<string | null>(null);
+  const [showRenderStudio, setShowRenderStudio] = useState<boolean>(false);
+  const [activeCanvas, setActiveCanvas] = useState<HTMLCanvasElement | null>(null);
+  const walkthroughControllerRef = useRef<WalkthroughController | null>(null);
 
   const controlsRef = useRef<OrbitControls | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -103,13 +115,22 @@ export function Viewport3D() {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
 
-    // 4. Orbit Controls
+    // 4. Orbit Controls & Walkthrough Controller
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
     controls.maxPolarAngle = Math.PI / 2 - 0.02; // Restrict going below ground
     controls.target.set(0, 1.5, 0);
     controlsRef.current = controls;
+
+    setActiveCanvas(renderer.domElement);
+    const wtController = new WalkthroughController(camera);
+    walkthroughControllerRef.current = wtController;
+
+    if (walkthroughMode) {
+      controls.enabled = false;
+      wtController.enable({ x: 0, z: 0 }, 0);
+    }
 
     // 5. Dynamic Solar Lighting Engine (True-North Daylight)
     const ambientLight = new THREE.AmbientLight(0xffffff, solarData.ambientIntensity);
@@ -199,27 +220,6 @@ export function Viewport3D() {
       color: activeFloorSpec.id === 'teak_hardwood' ? 0xc27838 : 0x78350f,
       roughness: 0.5,
       metalness: 0.05,
-    });
-
-    const furnitureDarkMat = new THREE.MeshStandardMaterial({
-      color: 0x1e293b,
-      roughness: 0.6,
-    });
-
-    const furnitureFabricMat = new THREE.MeshStandardMaterial({
-      color: 0x64748b,
-      roughness: 0.9,
-    });
-
-    const furnitureBedMat = new THREE.MeshStandardMaterial({
-      color: 0x0284c7, // Blueprint cyan bedding
-      roughness: 0.8,
-    });
-
-    const carMat = new THREE.MeshStandardMaterial({
-      color: 0x2563eb,
-      metalness: 0.7,
-      roughness: 0.3,
     });
 
     // Determine wall height based on cutaway mode
@@ -502,57 +502,75 @@ export function Viewport3D() {
       floor.props?.forEach((p) => {
         const px = p.position.x / 1000 - centerOffset.x;
         const pz = p.position.y / 1000 - centerOffset.z;
-        const pw = (p.dimensions?.width || 1000) / 1000;
-        const pd = (p.dimensions?.depth || 1000) / 1000;
 
-        const propGroup = new THREE.Group();
-        propGroup.position.set(px, floorElevationM, pz);
-        propGroup.rotation.y = -(p.rotation || 0) * (Math.PI / 180);
-
-        if (p.propType?.includes('bed')) {
-          const baseGeo = new THREE.BoxGeometry(pw, 0.45, pd);
-          const baseMesh = new THREE.Mesh(baseGeo, furnitureDarkMat);
-          baseMesh.position.set(0, 0.225, 0);
-          baseMesh.castShadow = true;
-          propGroup.add(baseMesh);
-
-          const mattressGeo = new THREE.BoxGeometry(pw * 0.95, 0.2, pd * 0.95);
-          const mattressMesh = new THREE.Mesh(mattressGeo, furnitureBedMat);
-          mattressMesh.position.set(0, 0.55, 0);
-          mattressMesh.castShadow = true;
-          propGroup.add(mattressMesh);
-        } else if (p.propType?.includes('sofa')) {
-          const seatGeo = new THREE.BoxGeometry(pw, 0.4, pd);
-          const seatMesh = new THREE.Mesh(seatGeo, furnitureFabricMat);
-          seatMesh.position.set(0, 0.2, 0);
-          seatMesh.castShadow = true;
-          propGroup.add(seatMesh);
-        } else if (p.propType?.includes('car')) {
-          const carBodyGeo = new THREE.BoxGeometry(pw, 1.2, pd);
-          const carBodyMesh = new THREE.Mesh(carBodyGeo, carMat);
-          carBodyMesh.position.set(0, 0.6, 0);
-          carBodyMesh.castShadow = true;
-          propGroup.add(carBodyMesh);
-        } else {
-          const blockGeo = new THREE.BoxGeometry(pw, 0.7, pd);
-          const blockMesh = new THREE.Mesh(blockGeo, furnitureDarkMat);
-          blockMesh.position.set(0, 0.35, 0);
-          blockMesh.castShadow = true;
-          propGroup.add(blockMesh);
-        }
-
-        scene.add(propGroup);
+        const propMesh = createProp3DMesh(p);
+        propMesh.position.set(px, floorElevationM, pz);
+        propMesh.rotation.y = -(p.rotation || 0) * (Math.PI / 180);
+        scene.add(propMesh);
       });
     });
 
-    // 9. Animation Loop
+    // 9. Animation Loop & Walkthrough Updates
+    let lastTime = performance.now();
     let animationFrameId: number;
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate);
-      controls.update();
+      const now = performance.now();
+      const deltaSec = (now - lastTime) / 1000;
+      lastTime = now;
+
+      if (walkthroughMode) {
+        wtController.update(Math.min(deltaSec, 0.1), { minX: -60, maxX: 60, minZ: -60, maxZ: 60 });
+        const activeFloor = currentProject.floors.find((f) => f.id === currentProject.activeFloorId) || currentProject.floors[0];
+        if (activeFloor) {
+          const room = wtController.getCurrentRoom(activeFloor.rooms, centerOffset);
+          setCurrentRoomName((prev) => (prev !== room ? room : prev));
+        }
+      } else {
+        controls.update();
+      }
+
       renderer.render(scene, camera);
     };
     animate();
+
+    // Keyboard and mouse handlers for First-Person Walkthrough
+    const handleKeyDown = (e: KeyboardEvent) => {
+      wtController.handleKeyDown(e.code);
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      wtController.handleKeyUp(e.code);
+    };
+
+    let isMouseDown = false;
+    let lastMouseX = 0;
+    let lastMouseY = 0;
+
+    const handleMouseDown = (e: MouseEvent) => {
+      if (!walkthroughMode) return;
+      isMouseDown = true;
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!walkthroughMode || !isMouseDown) return;
+      const dx = e.clientX - lastMouseX;
+      const dy = e.clientY - lastMouseY;
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+      wtController.handleMouseMove(dx, dy);
+    };
+
+    const handleMouseUp = () => {
+      isMouseDown = false;
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    container.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
 
     // 10. Resize Handling
     const handleResize = () => {
@@ -567,12 +585,18 @@ export function Viewport3D() {
     const resizeObserver = new ResizeObserver(handleResize);
     resizeObserver.observe(container);
 
-    // Cleanup
+    // Cleanup & Hardened GPU Resource Disposal
     return () => {
       cancelAnimationFrame(animationFrameId);
       resizeObserver.disconnect();
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      container.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
       renderer.dispose();
       controls.dispose();
+      scene.clear();
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }
@@ -584,7 +608,8 @@ export function Viewport3D() {
     centerOffset, 
     solarData,
     floorFinish,
-    wallFinish
+    wallFinish,
+    walkthroughMode
   ]);
 
   const handleCameraPreset = (preset: 'iso' | 'top' | 'front') => {
@@ -689,6 +714,28 @@ export function Viewport3D() {
         >
           <Palette className="h-3.5 w-3.5 text-cyan-400" />
           <span>Materials</span>
+        </button>
+
+        {/* First-Person Walkthrough Mode */}
+        <button
+          onClick={() => setWalkthroughMode(!walkthroughMode)}
+          className={`bg-slate-950/90 backdrop-blur-md border px-3 py-1.5 rounded-md shadow-sm text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+            walkthroughMode ? 'border-emerald-500 bg-emerald-950/50 text-emerald-300' : 'border-slate-700 text-slate-300 hover:text-white'
+          }`}
+          title="Toggle First-Person 3D Walkthrough Mode (WASD + Mouse)"
+        >
+          <Footprints className="h-3.5 w-3.5 text-emerald-400" />
+          <span>{walkthroughMode ? 'Walk (Active)' : 'Walkthrough'}</span>
+        </button>
+
+        {/* AI Studio Render Synthesizer */}
+        <button
+          onClick={() => setShowRenderStudio(true)}
+          className="bg-slate-950/90 backdrop-blur-md border border-fuchsia-700/60 px-3 py-1.5 rounded-md shadow-sm text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer text-fuchsia-300 hover:bg-fuchsia-950/60 hover:text-white"
+          title="Generate Photorealistic 8K Architectural Diffusion Render"
+        >
+          <Camera className="h-3.5 w-3.5 text-fuchsia-400" />
+          <span>AI Render Studio</span>
         </button>
       </div>
 
@@ -873,19 +920,59 @@ export function Viewport3D() {
         </div>
       )}
 
-      {/* Bottom Floating Hint & Compass Watermark */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-slate-950/90 backdrop-blur-md text-white px-4 py-1.5 rounded-md shadow-lg text-[11px] font-medium pointer-events-none flex items-center gap-3 border border-slate-800 z-20">
-        <span className="flex items-center gap-1.5 text-cyan-400">
-          <Compass className="h-3 w-3" />
-          True-North: {currentProject?.siteContext?.roadFacing || 'N'}
-        </span>
-        <span className="text-slate-600">•</span>
-        <span>Left Drag: 360° Orbit</span>
-        <span className="text-slate-600">•</span>
-        <span>Right Drag: Pan</span>
-        <span className="text-slate-600">•</span>
-        <span>Scroll: Zoom</span>
-      </div>
+      {/* Bottom Floating Hint & Compass Watermark / Walkthrough HUD */}
+      {walkthroughMode ? (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-slate-950/95 backdrop-blur-md border border-slate-700 px-5 py-2.5 rounded-lg shadow-2xl text-xs font-mono text-slate-200 flex items-center gap-4 z-30 pointer-events-auto">
+          <div className="flex items-center gap-1.5 text-cyan-400 font-bold">
+            <Footprints className="h-4 w-4" />
+            <span>WALKTHROUGH ACTIVE</span>
+          </div>
+          <span className="text-slate-600">|</span>
+          <span>[W][A][S][D] / Arrows: Walk</span>
+          <span className="text-slate-600">|</span>
+          <span>Shift: Sprint</span>
+          <span className="text-slate-600">|</span>
+          <span>Drag: Look</span>
+          {currentRoomName && (
+            <>
+              <span className="text-slate-600">|</span>
+              <span className="text-emerald-400 font-bold">Room: {currentRoomName}</span>
+            </>
+          )}
+          <button
+            onClick={() => setWalkthroughMode(false)}
+            className="ml-2 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold cursor-pointer transition-colors"
+          >
+            Exit (Orbit)
+          </button>
+        </div>
+      ) : (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-slate-950/90 backdrop-blur-md text-white px-4 py-1.5 rounded-md shadow-lg text-[11px] font-medium pointer-events-none flex items-center gap-3 border border-slate-800 z-20">
+          <span className="flex items-center gap-1.5 text-cyan-400">
+            <Compass className="h-3 w-3" />
+            True-North: {currentProject?.siteContext?.roadFacing || 'N'}
+          </span>
+          <span className="text-slate-600">•</span>
+          <span>Left Drag: 360° Orbit</span>
+          <span className="text-slate-600">•</span>
+          <span>Right Drag: Pan</span>
+          <span className="text-slate-600">•</span>
+          <span>Scroll: Zoom</span>
+        </div>
+      )}
+
+      {/* Phase 16: AI Studio Render Synthesizer Modal */}
+      {currentProject && (
+        <AIRenderStudioModal
+          project={currentProject}
+          isOpen={showRenderStudio}
+          onClose={() => setShowRenderStudio(false)}
+          webglCanvas={activeCanvas}
+          floorFinish={floorFinish}
+          wallFinish={wallFinish}
+          currentRoomName={currentRoomName}
+        />
+      )}
     </div>
   );
 }

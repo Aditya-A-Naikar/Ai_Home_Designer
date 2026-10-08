@@ -43,6 +43,7 @@ import { Button } from '@/components/ui/button';
 import { fitToContent } from '@/core/canvas/transform';
 import { downloadProjectJson, parseProjectJson } from '@/core/export/json-exporter';
 import { downloadFloorSvg } from '@/core/export/svg-blueprint-exporter';
+import { downloadFloorDxf } from '@/core/export/dxf-exporter';
 import { PropsCatalogModal } from './props-catalog-modal';
 import { BOQEstimatorModal } from './boq-estimator-modal';
 import { PermittingSheetsModal } from './permitting-sheets-modal';
@@ -119,6 +120,12 @@ export function CanvasToolbar() {
   const handleExportSvg = () => {
     if (!currentProject) return;
     downloadFloorSvg(currentProject, currentProject.activeFloorId);
+    setExportMenuOpen(false);
+  };
+
+  const handleExportDxf = () => {
+    if (!currentProject) return;
+    downloadFloorDxf(currentProject, currentProject.activeFloorId);
     setExportMenuOpen(false);
   };
 
@@ -459,6 +466,17 @@ export function CanvasToolbar() {
                 <div className="flex flex-col">
                   <span className="font-semibold text-slate-800">Architectural Blueprint (SVG)</span>
                   <span className="text-[10px] text-slate-400">Scale drawing ready for print & CAD</span>
+                </div>
+              </button>
+
+              <button
+                onClick={handleExportDxf}
+                className="w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer transition-colors border-t border-slate-100"
+              >
+                <Layers className="h-4 w-4 text-amber-600 shrink-0" />
+                <div className="flex flex-col">
+                  <span className="font-semibold text-slate-800">AutoCAD Drawing (.dxf)</span>
+                  <span className="text-[10px] text-slate-400">Standard CAD layers for AutoCAD & Revit</span>
                 </div>
               </button>
 
