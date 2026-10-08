@@ -3,6 +3,7 @@
 import React from 'react';
 import { useCanvasStore, ToolType } from '@/store/canvas-store';
 import { useProjectStore } from '@/store/project-store';
+import Link from 'next/link';
 import { 
   MousePointer2, 
   Hammer, 
@@ -26,7 +27,8 @@ import {
   Download,
   Upload,
   FileCode,
-  Armchair
+  Armchair,
+  Home
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { fitToContent } from '@/core/canvas/transform';
@@ -133,6 +135,23 @@ export function CanvasToolbar() {
     <div className="flex h-14 items-center px-4 border-b bg-white shrink-0 justify-between select-none">
       {/* Primary Tool Palette */}
       <div className="flex items-center space-x-2">
+        {/* Brand / Project Back Navigation */}
+        <Link 
+          href="/dashboard" 
+          className="flex items-center gap-2 mr-2 pr-3 border-r border-slate-200 hover:opacity-85 transition-opacity"
+          title="Return to Dashboard"
+        >
+          <div className="h-7 w-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-xs">
+            <Home className="h-4 w-4" />
+          </div>
+          <div className="hidden xl:flex flex-col">
+            <span className="font-bold text-xs text-slate-900 leading-tight">HomeAI</span>
+            <span className="text-[10px] text-slate-500 font-medium leading-none truncate max-w-[120px]">
+              {currentProject?.name || 'Untitled'}
+            </span>
+          </div>
+        </Link>
+
         <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-lg">
           {tools.map((t) => (
             <button

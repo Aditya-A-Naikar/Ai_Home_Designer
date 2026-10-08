@@ -22,6 +22,7 @@ export async function POST(req: Request) {
       message: generationResult.message,
       actions: generationResult.actions,
       suggestions: generationResult.suggestions,
+      replaceFloor: generationResult.replaceFloor,
       placementSummary: generationResult.placementSummary,
     });
 

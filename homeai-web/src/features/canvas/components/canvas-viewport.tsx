@@ -45,6 +45,7 @@ export function CanvasViewport() {
     setZoom, 
     setPanOffset, 
     tool, 
+    setTool,
     selectedElementId, 
     selectedSubElement,
     selectElement,
@@ -107,13 +108,54 @@ export function CanvasViewport() {
     return () => observer.disconnect();
   }, []);
 
-  // Listen for space key for quick pan
+  const finishRoomPolygon = useCallback(() => {
+    if (roomVertices.length >= 3 && currentProject) {
+      const activeFl = currentProject.floors.find(f => f.id === currentProject.activeFloorId);
+      const roomNum = (activeFl?.rooms.length || 0) + 1;
+      const newRoomId = uuidv4();
+      addRoom(currentProject.activeFloorId, {
+        id: newRoomId,
+        floorId: currentProject.activeFloorId,
+        name: `Room ${roomNum}`,
+        polygon: roomVertices,
+        color: getRoomColor('Living'),
+      });
+      selectElement(newRoomId);
+      selectSubElement({ type: 'room', id: newRoomId });
+      setTool('select');
+      setRoomVertices([]);
+      setRoomCursor(null);
+    }
+  }, [roomVertices, currentProject, addRoom, selectElement, selectSubElement, setTool]);
+
+  // Listen for space key for quick pan, delete, escape, and enter
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      
       if (e.code === 'Space' && !e.repeat) {
         setSpacePressed(true);
       }
+
+      if (e.key === 'Escape') {
+        if (roomVertices.length > 0) {
+          setRoomVertices([]);
+          setRoomCursor(null);
+        }
+        setDrawingWall(null);
+        selectElement(null);
+        selectSubElement(null);
+        setTool('select');
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        if (tool === 'room' && roomVertices.length >= 3) {
+          finishRoomPolygon();
+          return;
+        }
+      }
+
       // Delete selected element
       if (e.key === 'Delete' || e.key === 'Backspace') {
         const activeFloor = currentProject?.floors.find(f => f.id === currentProject.activeFloorId);
@@ -155,7 +197,7 @@ export function CanvasViewport() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [currentProject, selectedSubElement, selectedElementId, deleteDoor, deleteWindow, deleteWall, deleteRoom, deleteProp, selectElement, selectSubElement]);
+  }, [currentProject, selectedSubElement, selectedElementId, deleteDoor, deleteWindow, deleteWall, deleteRoom, deleteProp, selectElement, selectSubElement, setTool, tool, roomVertices, finishRoomPolygon]);
 
   const getPointerMm = useCallback((e: React.MouseEvent | React.PointerEvent) => {
     if (!svgRef.current) return { x: 0, y: 0 };
@@ -258,27 +300,21 @@ export function CanvasViewport() {
       if (roomVertices.length >= 3) {
         const first = roomVertices[0];
         const dist = new Vector2D(pt.x, pt.y).distanceTo(first);
-        if (dist <= Math.max(30 / zoom, 150)) {
+        if (dist <= Math.max(30 / zoom, 250)) {
           // Close room!
-          if (currentProject) {
-            const newRoomId = uuidv4();
-            addRoom(currentProject.activeFloorId, {
-              id: newRoomId,
-              floorId: currentProject.activeFloorId,
-              name: `Room ${rooms.length + 1}`,
-              polygon: roomVertices,
-              color: getRoomColor('Living'),
-            });
-            selectElement(newRoomId);
-          }
-          setRoomVertices([]);
-          setRoomCursor(null);
+          finishRoomPolygon();
           return;
         }
       }
 
       setRoomVertices(prev => [...prev, pt]);
       setRoomCursor(pt);
+    }
+  };
+
+  const handleDoubleClick = () => {
+    if (tool === 'room' && roomVertices.length >= 3) {
+      finishRoomPolygon();
     }
   };
 
@@ -417,6 +453,34 @@ export function CanvasViewport() {
 
   return (
     <div ref={containerRef} className="w-full h-full bg-slate-50 overflow-hidden relative select-none">
+      {/* Floating Helper Banner for Room Tool */}
+      {tool === 'room' && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-slate-900/90 text-white px-3.5 py-1.5 rounded-full shadow-lg text-xs flex items-center gap-2.5 z-20 backdrop-blur pointer-events-auto select-none border border-slate-700/60">
+          <div className="h-2 w-2 rounded-full bg-sky-400 animate-pulse" />
+          <span className="font-medium text-slate-100">
+            {roomVertices.length === 0 
+              ? "Click anywhere to place first room corner" 
+              : roomVertices.length < 3
+              ? `Placed ${roomVertices.length} point(s) • Click to add corners`
+              : `Placed ${roomVertices.length} points • Double-click or click start point to close`}
+          </span>
+          {roomVertices.length >= 3 && (
+            <button
+              onClick={finishRoomPolygon}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-semibold px-2 py-0.5 rounded transition-colors cursor-pointer"
+            >
+              Finish Room
+            </button>
+          )}
+          <button
+            onClick={() => { setRoomVertices([]); setRoomCursor(null); setTool('select'); }}
+            className="text-slate-400 hover:text-white text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer"
+          >
+            Cancel (Esc)
+          </button>
+        </div>
+      )}
+
       <svg
         ref={svgRef}
         width={size.w}
@@ -424,6 +488,15 @@ export function CanvasViewport() {
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onDoubleClick={handleDoubleClick}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          if (roomVertices.length > 0) {
+            setRoomVertices([]);
+            setRoomCursor(null);
+            setTool('select');
+          }
+        }}
         onWheel={handleWheel}
         className={
           tool === 'pan' || isPanning || spacePressed
@@ -435,6 +508,9 @@ export function CanvasViewport() {
             : 'cursor-default'
         }
       >
+        {/* Full-bleed background click catcher for instant blank-space deselection */}
+        <rect width={size.w} height={size.h} fill="transparent" pointerEvents="all" />
+
         <g transform={`translate(${panOffset.x}, ${panOffset.y}) scale(${zoom})`}>
           {/* Architectural Grid Layer */}
           <GridLayer 
@@ -451,8 +527,13 @@ export function CanvasViewport() {
             zoom={zoom} 
             selectedElementId={selectedElementId} 
             onSelect={(id) => {
-              selectElement(id);
-              selectSubElement({ type: 'room', id });
+              if (!id) {
+                selectElement(null);
+                selectSubElement(null);
+              } else {
+                selectElement(id);
+                selectSubElement({ type: 'room', id });
+              }
             }} 
             preferredUnit={currentProject?.settings.preferredUnit || 'mm'} 
           />

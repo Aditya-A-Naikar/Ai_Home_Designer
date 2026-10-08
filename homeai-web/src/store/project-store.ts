@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { Project, Wall, Room, Door, Window, Floor, Point2D, Prop } from '@/core/domain/types';
+import { PlanGenerationAction } from '@/core/ai/plan-generator';
 import { projectRepository } from '@/infrastructure/persistence/local-storage-project-repository';
 import { autoDetectRooms } from '@/core/geometry/room-utils';
 import { useCanvasStore } from './canvas-store';
@@ -54,6 +55,7 @@ interface ProjectActions {
   undo: () => void;
   redo: () => void;
   importProject: (project: Project) => Promise<void>;
+  applyPlanGenerationActions: (floorId: string, actions: PlanGenerationAction[], replaceFloor?: boolean) => void;
 }
 
 const MAX_HISTORY = 50;
@@ -341,6 +343,38 @@ export const useProjectStore = create<ProjectState & ProjectActions>()(
       const next = state.future.pop()!;
       state.past.push(JSON.parse(JSON.stringify(state.currentProject)));
       state.currentProject = next;
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    applyPlanGenerationActions: (floorId, actions, replaceFloor = false) => set((state) => {
+      if (!state.currentProject) return;
+      pushHistory(state);
+      const floor = state.currentProject.floors.find(f => f.id === floorId) || state.currentProject.floors[0];
+      if (!floor) return;
+
+      if (replaceFloor) {
+        floor.walls = [];
+        floor.rooms = [];
+        floor.props = [];
+      }
+
+      if (!floor.props) floor.props = [];
+
+      for (const act of actions) {
+        if (act.type === 'add_wall' && act.wall) {
+          floor.walls.push(act.wall);
+        } else if (act.type === 'add_room' && act.room) {
+          floor.rooms.push(act.room);
+        } else if (act.type === 'add_prop' && act.prop) {
+          floor.props.push(act.prop);
+        } else if (act.type === 'add_door' && act.door) {
+          const wall = floor.walls.find(w => w.id === act.door?.wallId);
+          if (wall) wall.doors.push(act.door);
+        } else if (act.type === 'add_window' && act.window) {
+          const wall = floor.walls.find(w => w.id === act.window?.wallId);
+          if (wall) wall.windows.push(act.window);
+        }
+      }
       useCanvasStore.getState().markModified(true);
     })
   }))

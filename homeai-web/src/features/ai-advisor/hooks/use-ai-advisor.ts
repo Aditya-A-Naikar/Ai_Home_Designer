@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { AIMessage } from '../types';
 import { useProjectStore } from '@/store/project-store';
+import { useCanvasStore } from '@/store/canvas-store';
+import { fitToContent } from '@/core/canvas/transform';
 import { PlanGenerationAction } from '@/core/ai/plan-generator';
 import { ActionPayload } from '@/core/ai/architect-rules';
 import { v4 as uuidv4 } from 'uuid';
@@ -72,9 +74,22 @@ export function useAIAdvisor(projectId: string) {
 
       // Automatically apply direct mutations (props, rooms, walls)
       if (data.actions && data.actions.length > 0) {
-        data.actions.forEach((act: PlanGenerationAction) => {
-          executeAction(act);
-        });
+        const store = useProjectStore.getState();
+        const activeFloorId = (projectContext as { activeFloorId?: string })?.activeFloorId || '';
+        store.applyPlanGenerationActions(activeFloorId, data.actions, data.replaceFloor);
+
+        // Auto-fit newly generated geometry so the user immediately sees the result
+        const updatedProject = useProjectStore.getState().currentProject;
+        const targetFloor = updatedProject?.floors.find(f => f.id === activeFloorId);
+        if (targetFloor && targetFloor.walls.length > 0 && typeof window !== 'undefined') {
+          const { zoom, panOffset } = fitToContent(
+            targetFloor.walls,
+            Math.max(window.innerWidth - 680, 500),
+            Math.max(window.innerHeight - 80, 400)
+          );
+          useCanvasStore.getState().setZoom(zoom);
+          useCanvasStore.getState().setPanOffset(panOffset);
+        }
       }
       
       const aiMsg: AIMessage = {

@@ -13,7 +13,7 @@ export default function EditorPage() {
   const params = useParams();
   const projectId = params.projectId as string;
   const { loadProject, isLoading, error, currentProject, undo, redo, saveProject } = useProjectStore();
-  const { setTool } = useCanvasStore();
+  const { setTool, selectElement, selectSubElement } = useCanvasStore();
 
   const { isModified } = useCanvasStore();
 
@@ -40,7 +40,11 @@ export default function EditorPage() {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
       switch(e.key.toLowerCase()) {
-        case 'escape': setTool('select'); break;
+        case 'escape':
+          setTool('select');
+          selectElement(null);
+          selectSubElement(null);
+          break;
         case 'v': setTool('select'); break;
         case 'w': setTool('wall'); break;
         case 'r': setTool('room'); break;
@@ -70,7 +74,7 @@ export default function EditorPage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setTool, undo, redo, saveProject]);
+  }, [setTool, selectElement, selectSubElement, undo, redo, saveProject]);
 
   if (isLoading) {
     return <div className="flex h-screen items-center justify-center bg-slate-50 text-slate-500">Loading project workspace...</div>;
@@ -81,11 +85,11 @@ export default function EditorPage() {
   }
 
   return (
-    <div className="flex flex-col h-screen w-full bg-slate-50 overflow-hidden">
+    <div className="flex flex-col h-full w-full bg-slate-50 overflow-hidden select-none">
       <CanvasToolbar />
-      <div className="flex flex-1 h-0">
+      <div className="flex flex-1 min-h-0 w-full overflow-hidden">
         <PropertiesPanel />
-        <div className="flex-1 relative">
+        <div className="flex-1 relative min-w-0 h-full overflow-hidden">
           <CanvasViewport />
         </div>
         <AIAdvisorPanel />

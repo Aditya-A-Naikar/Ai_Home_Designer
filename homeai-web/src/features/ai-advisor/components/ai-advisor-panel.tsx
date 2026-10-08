@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAIAdvisor } from '../hooks/use-ai-advisor';
 import { useProjectStore } from '@/store/project-store';
-import { Send, Bot, User, CheckCircle2, ChevronRight, Sparkles, ShieldAlert, Sun, Compass, Ruler, Tv, BedDouble } from 'lucide-react';
+import { Send, Bot, User, CheckCircle2, ChevronRight, Sparkles, ShieldAlert, Sun, Compass, Ruler, Tv, BedDouble, LayoutGrid } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
@@ -12,6 +12,11 @@ export function AIAdvisorPanel() {
   const { messages, isLoading, sendMessage, applySuggestion } = useAIAdvisor(currentProject?.id || '');
   const [input, setInput] = useState('');
   const [isOpen, setIsOpen] = useState(true);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isLoading]);
 
   if (!isOpen) {
     return (
@@ -34,10 +39,10 @@ export function AIAdvisorPanel() {
   };
 
   const quickPills = [
-    { label: 'Audit Codes', prompt: 'Audit my floor plan for NBC/IBC codes and natural daylight', icon: <ShieldAlert className="h-3 w-3" /> },
-    { label: '75" TV + Sofa', prompt: 'Add a 75-inch TV and modern gray L-shaped sofa to the Living Room', icon: <Tv className="h-3 w-3" /> },
-    { label: 'King Bed', prompt: 'Place a King size bed in the bedroom with nightstand clearance', icon: <BedDouble className="h-3 w-3" /> },
-    { label: 'Dining Set', prompt: 'Add a 6-seater dining table set with chair pull-out clearance', icon: <Sparkles className="h-3 w-3" /> },
+    { label: '2BHK Layout', prompt: 'Build a complete 2BHK architectural floor plan with living room, bedrooms, kitchen, and furniture', icon: <LayoutGrid className="h-3 w-3 text-indigo-600" /> },
+    { label: '75" TV + Sofa', prompt: 'Add a 75-inch TV and modern gray L-shaped sofa to the Living Room', icon: <Tv className="h-3 w-3 text-sky-600" /> },
+    { label: 'King Bed', prompt: 'Place a King size bed in the bedroom with nightstand clearance', icon: <BedDouble className="h-3 w-3 text-purple-600" /> },
+    { label: 'Audit Codes', prompt: 'Audit my floor plan for NBC/IBC codes and natural daylight', icon: <ShieldAlert className="h-3 w-3 text-red-600" /> },
   ];
 
   const getCategoryIcon = (category?: string) => {
@@ -51,7 +56,7 @@ export function AIAdvisorPanel() {
   };
 
   return (
-    <div className="w-88 border-l bg-white flex flex-col h-full shrink-0 relative shadow-sm">
+    <div className="w-96 min-w-[340px] max-w-[420px] border-l bg-white flex flex-col h-full shrink-0 relative shadow-sm overflow-hidden z-10">
       {/* Header */}
       <div className="h-14 border-b flex items-center justify-between px-4 bg-slate-50 shrink-0">
         <div className="flex items-center gap-2">
@@ -68,13 +73,14 @@ export function AIAdvisorPanel() {
         <button 
           onClick={() => setIsOpen(false)} 
           className="text-slate-400 hover:text-slate-600 p-1 rounded-md hover:bg-slate-200 transition-colors"
+          title="Minimize Co-Pilot"
         >
           <ChevronRight className="h-4 w-4" />
         </button>
       </div>
       
       {/* Chat Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 text-xs">
         {messages.map(msg => (
           <div key={msg.id} className={`flex gap-2.5 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
             <div className={`h-7 w-7 rounded-full flex items-center justify-center shrink-0 ${
@@ -83,8 +89,8 @@ export function AIAdvisorPanel() {
               {msg.role === 'user' ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
             </div>
             
-            <div className={`flex flex-col gap-2 max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-              <div className={`px-3 py-2.5 rounded-2xl leading-relaxed ${
+            <div className={`flex flex-col gap-2 max-w-[85%] min-w-0 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+              <div className={`px-3 py-2.5 rounded-2xl leading-relaxed break-words whitespace-pre-wrap ${
                 msg.role === 'user' 
                   ? 'bg-indigo-600 text-white rounded-tr-xs font-medium' 
                   : 'bg-slate-100 text-slate-800 rounded-tl-xs border border-slate-200/60'
@@ -159,23 +165,25 @@ export function AIAdvisorPanel() {
               <Bot className="h-3.5 w-3.5" />
             </div>
             <div className="px-3.5 py-2.5 rounded-2xl bg-slate-100 text-slate-500 rounded-tl-xs flex gap-1.5 items-center border border-slate-200/50">
-              <span className="text-[11px] font-medium mr-1">Calculating Neufert geometry</span>
+              <span className="text-[11px] font-medium mr-1">Calculating architectural geometry</span>
               <div className="h-1.5 w-1.5 bg-indigo-500 rounded-full animate-bounce" />
               <div className="h-1.5 w-1.5 bg-indigo-500 rounded-full animate-bounce [animation-delay:0.2s]" />
               <div className="h-1.5 w-1.5 bg-indigo-500 rounded-full animate-bounce [animation-delay:0.4s]" />
             </div>
           </div>
         )}
+
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Quick Prompt Pills */}
-      <div className="px-3 py-2 border-t border-slate-100 bg-slate-50 flex flex-wrap gap-1.5">
+      <div className="px-3 py-2 border-t border-slate-100 bg-slate-50 flex flex-wrap gap-1.5 shrink-0">
         {quickPills.map((p, idx) => (
           <button
             key={idx}
             onClick={() => handleSend(p.prompt)}
             disabled={isLoading}
-            className="flex items-center gap-1 px-2 py-1 rounded-md bg-white border border-slate-200 text-slate-700 text-[11px] font-medium hover:border-indigo-400 hover:text-indigo-600 transition-colors shadow-2xs disabled:opacity-50"
+            className="flex items-center gap-1 px-2 py-1 rounded-md bg-white border border-slate-200 text-slate-700 text-[11px] font-medium hover:border-indigo-400 hover:text-indigo-600 transition-colors shadow-2xs disabled:opacity-50 cursor-pointer"
           >
             {p.icon}
             <span>{p.label}</span>
@@ -184,20 +192,20 @@ export function AIAdvisorPanel() {
       </div>
 
       {/* Input Box */}
-      <div className="p-3 border-t bg-white">
+      <div className="p-3 border-t bg-white shrink-0">
         <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="relative flex items-center">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Add 75' TV, King bed, or audit plan..."
+            placeholder="Build 2BHK plan, add 75' TV + sofa, or audit..."
             className="w-full pl-3 pr-10 py-2 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-slate-50 focus:bg-white transition-colors"
             disabled={isLoading}
           />
           <button 
             type="submit" 
             disabled={!input.trim() || isLoading}
-            className="absolute right-1.5 top-1.5 p-1 text-white bg-indigo-600 hover:bg-indigo-700 rounded-md disabled:opacity-40 transition-colors"
+            className="absolute right-1.5 top-1.5 p-1 text-white bg-indigo-600 hover:bg-indigo-700 rounded-md disabled:opacity-40 transition-colors cursor-pointer"
             title="Send architectural instruction"
           >
             <Send className="h-3.5 w-3.5" />

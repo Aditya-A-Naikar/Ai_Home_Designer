@@ -31,7 +31,10 @@ export function RoomLayer({ rooms, zoom, selectedElementId, onSelect, preferredU
             key={room.id} 
             onClick={(e) => {
               e.stopPropagation();
-              onSelect?.(room.id);
+              onSelect?.(isSelected ? '' : room.id);
+            }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
             }}
             style={{ cursor: 'pointer' }}
           >
