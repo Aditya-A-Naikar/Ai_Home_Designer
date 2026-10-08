@@ -15,11 +15,24 @@ export default function EditorPage() {
   const { loadProject, isLoading, error, currentProject, undo, redo, saveProject } = useProjectStore();
   const { setTool } = useCanvasStore();
 
+  const { isModified } = useCanvasStore();
+
   useEffect(() => {
     if (projectId) {
       loadProject(projectId);
     }
   }, [projectId, loadProject]);
+
+  // Debounced auto-save
+  useEffect(() => {
+    if (!isModified || !currentProject) return;
+
+    const timer = setTimeout(() => {
+      saveProject();
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [isModified, currentProject, saveProject]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -38,6 +51,12 @@ export default function EditorPage() {
             e.preventDefault();
             if (e.shiftKey) redo();
             else undo();
+          }
+          break;
+        case 'y':
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            redo();
           }
           break;
         case 's':

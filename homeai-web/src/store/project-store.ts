@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import { Project, Wall, Room, Door, Window, Floor } from '@/core/domain/types';
+import { Project, Wall, Room, Door, Window, Floor, Point2D } from '@/core/domain/types';
 import { projectRepository } from '@/infrastructure/persistence/local-storage-project-repository';
+import { autoDetectRooms } from '@/core/geometry/room-utils';
 import { useCanvasStore } from './canvas-store';
 
 interface ProjectState {
@@ -27,16 +28,23 @@ interface ProjectActions {
   // Walls
   addWall: (floorId: string, wall: Wall) => void;
   updateWall: (floorId: string, wallId: string, updater: (w: Wall) => void) => void;
+  updateWallEndpoints: (floorId: string, wallId: string, start: Point2D, end: Point2D) => void;
   deleteWall: (floorId: string, wallId: string) => void;
   
   // Rooms
   addRoom: (floorId: string, room: Room) => void;
   updateRoom: (floorId: string, roomId: string, updater: (r: Room) => void) => void;
   deleteRoom: (floorId: string, roomId: string) => void;
+  detectAndAddRooms: (floorId: string) => number;
   
   // Elements
   addDoor: (floorId: string, wallId: string, door: Door) => void;
+  updateDoor: (floorId: string, wallId: string, doorId: string, updater: (d: Door) => void) => void;
+  deleteDoor: (floorId: string, wallId: string, doorId: string) => void;
+  
   addWindow: (floorId: string, wallId: string, window: Window) => void;
+  updateWindow: (floorId: string, wallId: string, windowId: string, updater: (win: Window) => void) => void;
+  deleteWindow: (floorId: string, wallId: string, windowId: string) => void;
   
   undo: () => void;
   redo: () => void;
@@ -153,6 +161,17 @@ export const useProjectStore = create<ProjectState & ProjectActions>()(
       useCanvasStore.getState().markModified(true);
     }),
     
+    updateWallEndpoints: (floorId, wallId, start, end) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      const wall = floor?.walls.find(w => w.id === wallId);
+      if (wall) {
+        wall.start = start;
+        wall.end = end;
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+    
     deleteWall: (floorId, wallId) => set((state) => {
       pushHistory(state);
       const floor = state.currentProject?.floors.find(f => f.id === floorId);
@@ -185,6 +204,28 @@ export const useProjectStore = create<ProjectState & ProjectActions>()(
       }
       useCanvasStore.getState().markModified(true);
     }),
+
+    detectAndAddRooms: (floorId) => {
+      const { currentProject } = get();
+      if (!currentProject) return 0;
+      const floor = currentProject.floors.find(f => f.id === floorId);
+      if (!floor) return 0;
+
+      const detected = autoDetectRooms(floor.walls, floorId);
+      if (detected.length === 0) return 0;
+
+      set((state) => {
+        pushHistory(state);
+        const targetFloor = state.currentProject?.floors.find(f => f.id === floorId);
+        if (targetFloor) {
+          // Replace or append detected rooms
+          targetFloor.rooms = detected;
+        }
+        useCanvasStore.getState().markModified(true);
+      });
+
+      return detected.length;
+    },
     
     addDoor: (floorId, wallId, door) => set((state) => {
       pushHistory(state);
@@ -193,12 +234,50 @@ export const useProjectStore = create<ProjectState & ProjectActions>()(
       if (wall) wall.doors.push(door);
       useCanvasStore.getState().markModified(true);
     }),
+
+    updateDoor: (floorId, wallId, doorId, updater) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      const wall = floor?.walls.find(w => w.id === wallId);
+      const door = wall?.doors.find(d => d.id === doorId);
+      if (door) updater(door);
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    deleteDoor: (floorId, wallId, doorId) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      const wall = floor?.walls.find(w => w.id === wallId);
+      if (wall) {
+        wall.doors = wall.doors.filter(d => d.id !== doorId);
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
     
     addWindow: (floorId, wallId, window) => set((state) => {
       pushHistory(state);
       const floor = state.currentProject?.floors.find(f => f.id === floorId);
       const wall = floor?.walls.find(w => w.id === wallId);
       if (wall) wall.windows.push(window);
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    updateWindow: (floorId, wallId, windowId, updater) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      const wall = floor?.walls.find(w => w.id === wallId);
+      const win = wall?.windows.find(w => w.id === windowId);
+      if (win) updater(win);
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    deleteWindow: (floorId, wallId, windowId) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      const wall = floor?.walls.find(w => w.id === wallId);
+      if (wall) {
+        wall.windows = wall.windows.filter(w => w.id !== windowId);
+      }
       useCanvasStore.getState().markModified(true);
     }),
     

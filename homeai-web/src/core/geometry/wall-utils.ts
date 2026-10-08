@@ -96,3 +96,60 @@ export function doorPositionValid(wall: Wall, offset: number, width: number): bo
 export function windowPositionValid(wall: Wall, offset: number, width: number): boolean {
   return offset >= width / 2 && offset <= wallLength(wall) - width / 2;
 }
+
+export interface WallProjection {
+  point: Point2D;
+  offset: number;
+  distance: number;
+  wall: Wall;
+}
+
+export function projectPointOntoWall(point: Point2D, wall: Wall): WallProjection {
+  const v = Vector2D.fromPoints(wall.start, wall.end);
+  const len = v.length();
+  if (len === 0) {
+    const dist = new Vector2D(wall.start.x, wall.start.y).distanceTo(point);
+    return { point: wall.start, offset: 0, distance: dist, wall };
+  }
+  const vToPoint = Vector2D.fromPoints(wall.start, point);
+  const dot = v.dot(vToPoint);
+  const projLen = Math.max(0, Math.min(len, dot / len));
+  const projPoint = new Vector2D(wall.start.x, wall.start.y).add(v.normalize().scale(projLen)).toPoint();
+  const dist = new Vector2D(projPoint.x, projPoint.y).distanceTo(point);
+  return { point: projPoint, offset: projLen, distance: dist, wall };
+}
+
+export function getNearestWall(point: Point2D, walls: Wall[], maxDistance: number = 300): WallProjection | null {
+  let nearest: WallProjection | null = null;
+  let minDistance = maxDistance;
+
+  for (const wall of walls) {
+    const proj = projectPointOntoWall(point, wall);
+    if (proj.distance <= minDistance) {
+      minDistance = proj.distance;
+      nearest = proj;
+    }
+  }
+
+  return nearest;
+}
+
+export function snapToOrtho(start: Point2D, point: Point2D): Point2D {
+  const dx = point.x - start.x;
+  const dy = point.y - start.y;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+
+  // Snap to horizontal (0 / 180 deg) or vertical (90 / 270 deg) or 45 degree diagonal
+  if (absDx > absDy * 2) {
+    return { x: point.x, y: start.y };
+  } else if (absDy > absDx * 2) {
+    return { x: start.x, y: point.y };
+  } else {
+    // 45 degree diagonal snap
+    const signX = dx >= 0 ? 1 : -1;
+    const signY = dy >= 0 ? 1 : -1;
+    const avg = (absDx + absDy) / 2;
+    return { x: start.x + signX * avg, y: start.y + signY * avg };
+  }
+}
