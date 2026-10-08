@@ -28,6 +28,7 @@ interface CanvasState {
   gridSize: number;
 
   // View settings
+  viewMode: '2d' | '3d';
   showAllDimensions: boolean;
   showUnderlay: boolean;
   leftSidebarOpen: boolean;
@@ -43,6 +44,7 @@ interface CanvasState {
 interface CanvasActions {
   setActiveProject: (projectId: string) => void;
   setActiveFloor: (floorId: string) => void;
+  setViewMode: (mode: '2d' | '3d') => void;
   setTool: (tool: ToolType) => void;
   setZoom: (zoom: number) => void;
   setPanOffset: (offset: Point2D) => void;
@@ -87,6 +89,7 @@ export const useCanvasStore = create<CanvasStore>()(
       orthoMode: false,
       gridSize: 100,
 
+      viewMode: '2d',
       showAllDimensions: false,
       showUnderlay: true,
       leftSidebarOpen: true,
@@ -99,6 +102,7 @@ export const useCanvasStore = create<CanvasStore>()(
       
       setActiveProject: (projectId) => set((state) => { state.activeProjectId = projectId; }),
       setActiveFloor: (floorId) => set((state) => { state.activeFloorId = floorId; }),
+      setViewMode: (mode) => set((state) => { state.viewMode = mode; }),
       setTool: (tool) => set((state) => { 
         state.tool = tool;
         if (tool !== 'select') {

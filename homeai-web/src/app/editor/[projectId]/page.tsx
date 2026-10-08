@@ -6,6 +6,7 @@ import { useProjectStore } from '@/store/project-store';
 import { CanvasToolbar } from '@/features/canvas/components/canvas-toolbar';
 import { PropertiesPanel } from '@/features/canvas/components/properties-panel';
 import { CanvasViewport } from '@/features/canvas/components/canvas-viewport';
+import { Viewport3D } from '@/features/canvas/components/viewport-3d';
 import { AIAdvisorPanel } from '@/features/ai-advisor/components/ai-advisor-panel';
 import { useCanvasStore } from '@/store/canvas-store';
 import { PanelLeft } from 'lucide-react';
@@ -15,6 +16,7 @@ export default function EditorPage() {
   const projectId = params.projectId as string;
   const { loadProject, isLoading, error, currentProject, undo, redo, saveProject } = useProjectStore();
   const { 
+    viewMode,
     setTool, 
     selectElement, 
     selectSubElement, 
@@ -106,7 +108,7 @@ export default function EditorPage() {
           </button>
         )}
         <div className="flex-1 relative min-w-0 h-full overflow-hidden">
-          <CanvasViewport />
+          {viewMode === '3d' ? <Viewport3D /> : <CanvasViewport />}
         </div>
         <AIAdvisorPanel />
       </div>

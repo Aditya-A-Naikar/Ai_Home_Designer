@@ -30,7 +30,9 @@ import {
   PanelLeft,
   ChevronDown,
   Sparkles,
-  Layers
+  Layers,
+  Box,
+  LayoutGrid
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { fitToContent } from '@/core/canvas/transform';
@@ -40,6 +42,8 @@ import { PropsCatalogModal } from './props-catalog-modal';
 
 export function CanvasToolbar() {
   const { 
+    viewMode,
+    setViewMode,
     tool, 
     setTool, 
     zoom, 
@@ -216,8 +220,37 @@ export function CanvasToolbar() {
         </div>
       </div>
 
-      {/* CENTER: Minimalist CAD Dock & Precision Snapping Bar */}
+      {/* CENTER: 2D/3D Mode Switch, Minimalist CAD Dock & Precision Snapping Bar */}
       <div className="flex items-center gap-2 shrink-0">
+        {/* 2D Plan / 3D View Segmented Switch */}
+        <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200/80 shrink-0">
+          <button
+            onClick={() => setViewMode('2d')}
+            className={`h-8 px-2.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+              viewMode === '2d'
+                ? 'bg-white shadow-xs text-indigo-700 font-bold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+            }`}
+            title="2D CAD Blueprint Plan Editor"
+          >
+            <LayoutGrid className="h-3.5 w-3.5 text-indigo-600" />
+            <span className="hidden sm:inline">2D Plan</span>
+          </button>
+          
+          <button
+            onClick={() => setViewMode('3d')}
+            className={`h-8 px-2.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+              viewMode === '3d'
+                ? 'bg-indigo-600 text-white shadow-xs font-bold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+            }`}
+            title="Interactive 3D Walkthrough & Isometric View"
+          >
+            <Box className="h-3.5 w-3.5" />
+            <span>3D View</span>
+          </button>
+        </div>
+
         {/* Compact CAD Tools Dock */}
         <div className="flex items-center space-x-0.5 bg-slate-100/90 p-0.5 rounded-lg border border-slate-200/60 shrink-0">
           {cadTools.map((t) => (
