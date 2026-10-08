@@ -84,6 +84,18 @@ export function generatePlanFromPrompt(
     pLower.includes("2-floor") || 
     pLower.includes("g+1") ||
     pLower.includes("g + 1") ||
+    pLower.includes("g +1") ||
+    pLower.includes("g+ 1") ||
+    pLower.includes("g1") ||
+    pLower.includes("ground+1") ||
+    pLower.includes("ground + 1") ||
+    pLower.includes("ground plus one") ||
+    pLower.includes("2 storey") ||
+    pLower.includes("2-storey") ||
+    pLower.includes("2 story") ||
+    pLower.includes("2-story") ||
+    pLower.includes("two storey") ||
+    pLower.includes("two story") ||
     pLower.includes("multi floor") ||
     pLower.includes("multi-floor");
 

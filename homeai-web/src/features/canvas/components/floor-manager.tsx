@@ -7,8 +7,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { useCanvasStore } from '@/store/canvas-store';
 
 export function FloorManager() {
-  const { currentProject, addFloor, deleteFloor } = useProjectStore();
-  const { showUnderlay, toggleShowUnderlay, setActiveFloor } = useCanvasStore();
+  const { currentProject, addFloor, deleteFloor, setActiveFloor } = useProjectStore();
+  const { showUnderlay, toggleShowUnderlay } = useCanvasStore();
   
   if (!currentProject) return null;
 
@@ -67,8 +67,6 @@ export function FloorManager() {
               }`}
               onClick={() => {
                 if (!isActive) {
-                  const nextProject = { ...currentProject, activeFloorId: floor.id };
-                  useProjectStore.setState({ currentProject: nextProject });
                   setActiveFloor(floor.id);
                 }
               }}

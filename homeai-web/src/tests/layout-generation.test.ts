@@ -196,4 +196,24 @@ describe('Natural Language Intent Parser with Autonomous Room Generation', () =>
     // Props across both floors (sedan, 75" TV, sofa, king bed, sanitaryware, etc.)
     expect(props.length).toBeGreaterThanOrEqual(15);
   });
+
+  it('recognizes "g+1" and "G+1" prompts to trigger complete Duplex generation', () => {
+    const project = createEmptyProject();
+    
+    // Test lowercase "g+1"
+    const res1 = generatePlanFromPrompt('g+1', project);
+    expect(res1.message).toContain('Duplex');
+    expect(res1.actions.length).toBeGreaterThanOrEqual(50);
+    expect(res1.replaceFloor).toBe(true);
+
+    // Test uppercase "G+1"
+    const res2 = generatePlanFromPrompt('G+1', project);
+    expect(res2.message).toContain('Duplex');
+    expect(res2.actions.length).toBeGreaterThanOrEqual(50);
+
+    // Test spaced "g + 1"
+    const res3 = generatePlanFromPrompt('g + 1 villa', project);
+    expect(res3.message).toContain('Duplex');
+    expect(res3.actions.length).toBeGreaterThanOrEqual(50);
+  });
 });

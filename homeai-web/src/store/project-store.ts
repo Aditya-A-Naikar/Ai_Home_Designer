@@ -25,6 +25,7 @@ interface ProjectActions {
   addFloor: (floor: Floor) => void;
   updateFloor: (floorId: string, updater: (f: Floor) => void) => void;
   deleteFloor: (floorId: string) => void;
+  setActiveFloor: (floorId: string) => void;
   
   // Walls
   addWall: (floorId: string, wall: Wall) => void;
@@ -181,6 +182,13 @@ export const useProjectStore = create<ProjectState & ProjectActions>()(
         useCanvasStore.getState().setActiveFloor(state.currentProject.activeFloorId);
       }
       useCanvasStore.getState().markModified(true);
+    }),
+
+    setActiveFloor: (floorId) => set((state) => {
+      if (state.currentProject && state.currentProject.floors.some(f => f.id === floorId)) {
+        state.currentProject.activeFloorId = floorId;
+        useCanvasStore.getState().setActiveFloor(floorId);
+      }
     }),
     
     addWall: (floorId, wall) => set((state) => {

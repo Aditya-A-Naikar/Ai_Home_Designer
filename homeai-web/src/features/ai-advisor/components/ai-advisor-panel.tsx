@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useAIAdvisor } from '../hooks/use-ai-advisor';
 import { useProjectStore } from '@/store/project-store';
 import { useCanvasStore } from '@/store/canvas-store';
-import { Send, Bot, User, CheckCircle2, ChevronRight, Sparkles, ShieldAlert, Sun, Compass, Ruler, Tv, BedDouble, LayoutGrid } from 'lucide-react';
+import { Send, Bot, User, CheckCircle2, ChevronRight, Sparkles, ShieldAlert, Sun, Compass, Ruler, Tv, BedDouble, LayoutGrid, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
@@ -40,6 +40,7 @@ export function AIAdvisorPanel() {
   };
 
   const quickPills = [
+    { label: 'Duplex Villa (G+1)', prompt: 'Build a duplex house with internal staircase and double height living room', icon: <Building2 className="h-3 w-3 text-emerald-600" /> },
     { label: '2BHK Layout', prompt: 'Build a complete 2BHK architectural floor plan with living room, bedrooms, kitchen, and furniture', icon: <LayoutGrid className="h-3 w-3 text-indigo-600" /> },
     { label: '75" TV + Sofa', prompt: 'Add a 75-inch TV and modern gray L-shaped sofa to the Living Room', icon: <Tv className="h-3 w-3 text-sky-600" /> },
     { label: 'King Bed', prompt: 'Place a King size bed in the bedroom with nightstand clearance', icon: <BedDouble className="h-3 w-3 text-purple-600" /> },

@@ -80,7 +80,8 @@ export function useAIAdvisor(projectId: string) {
 
         // Auto-fit newly generated geometry so the user immediately sees the result
         const updatedProject = useProjectStore.getState().currentProject;
-        const targetFloor = updatedProject?.floors.find(f => f.id === activeFloorId);
+        const currentActiveId = updatedProject?.activeFloorId || activeFloorId;
+        const targetFloor = updatedProject?.floors.find(f => f.id === currentActiveId) || updatedProject?.floors[0];
         if (targetFloor && targetFloor.walls.length > 0 && typeof window !== 'undefined') {
           const { zoom, panOffset } = fitToContent(
             targetFloor.walls,
