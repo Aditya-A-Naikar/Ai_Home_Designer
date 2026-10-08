@@ -336,7 +336,137 @@ export function PropLayer({
                 <path d={`M -140 ${halfD + 60} A 160 160 0 0 1 140 ${halfD + 60}`} fill="none" stroke="#475569" strokeWidth={15} strokeLinecap="round" />
                 <g transform={`scale(${1 / zoom})`}>
                   <text x={0} y={4} textAnchor="middle" fill="#ffffff" fontSize={10} fontWeight="bold" pointerEvents="none">
-                    Workstation
+                    Desk
+                  </text>
+                </g>
+              </g>
+            )}
+
+            {prop.propType === 'coffee_table' && (
+              <g>
+                <rect x={-halfW} y={-halfD} width={w} height={d} rx={12} fill={color} stroke="#334155" strokeWidth={2} />
+                <g transform={`scale(${1 / zoom})`}>
+                  <text x={0} y={4} textAnchor="middle" fill="#ffffff" fontSize={10} fontWeight="bold" pointerEvents="none">
+                    Coffee Table
+                  </text>
+                </g>
+              </g>
+            )}
+
+            {prop.propType === 'counter_straight' && (
+              <g>
+                <rect x={-halfW} y={-halfD} width={w} height={d} rx={4} fill="#f1f5f9" stroke="#334155" strokeWidth={2} />
+                <line x1={-halfW} y1={-halfD + 40} x2={halfW} y2={-halfD + 40} stroke="#94a3b8" strokeWidth={1.5} />
+                <g transform={`scale(${1 / zoom})`}>
+                  <text x={0} y={4} textAnchor="middle" fill="#475569" fontSize={10} fontWeight="bold" pointerEvents="none">
+                    Kitchen Platform
+                  </text>
+                </g>
+              </g>
+            )}
+
+            {prop.propType === 'counter_l_shape' && (
+              <g>
+                <path d={`M ${-halfW} ${-halfD} L ${halfW} ${-halfD} L ${halfW} ${-halfD + 600} L ${-halfW + 600} ${-halfD + 600} L ${-halfW + 600} ${halfD} L ${-halfW} ${halfD} Z`} fill="#f1f5f9" stroke="#334155" strokeWidth={2} />
+                <g transform={`scale(${1 / zoom})`}>
+                  <text x={-halfW / 2} y={-halfD / 2} textAnchor="middle" fill="#475569" fontSize={10} fontWeight="bold" pointerEvents="none">
+                    L-Counter
+                  </text>
+                </g>
+              </g>
+            )}
+
+            {prop.propType === 'hob_cooktop' && (
+              <g>
+                <rect x={-halfW} y={-halfD} width={w} height={d} rx={6} fill="#090d16" stroke="#475569" strokeWidth={2} />
+                <circle cx={-halfW * 0.5} cy={-halfD * 0.45} r={Math.min(w, d) * 0.22} fill="#1e293b" stroke="#f59e0b" strokeWidth={1.5} />
+                <circle cx={halfW * 0.5} cy={-halfD * 0.45} r={Math.min(w, d) * 0.22} fill="#1e293b" stroke="#f59e0b" strokeWidth={1.5} />
+                <circle cx={-halfW * 0.5} cy={halfD * 0.45} r={Math.min(w, d) * 0.18} fill="#1e293b" stroke="#f59e0b" strokeWidth={1.5} />
+                <circle cx={halfW * 0.5} cy={halfD * 0.45} r={Math.min(w, d) * 0.18} fill="#1e293b" stroke="#f59e0b" strokeWidth={1.5} />
+                <g transform={`scale(${1 / zoom})`}>
+                  <text x={0} y={4} textAnchor="middle" fill="#f59e0b" fontSize={9} fontWeight="bold" pointerEvents="none">
+                    HOB / COOKTOP
+                  </text>
+                </g>
+              </g>
+            )}
+
+            {prop.propType === 'sink' && (
+              <g>
+                <rect x={-halfW} y={-halfD} width={w} height={d} rx={6} fill="#f8fafc" stroke="#334155" strokeWidth={2} />
+                <rect x={-halfW + 40} y={-halfD + 40} width={w - 80} height={d - 80} rx={12} fill="#e2e8f0" stroke="#0284c7" strokeWidth={1.5} />
+                <circle cx={0} cy={0} r={18} fill="#94a3b8" />
+                <line x1={0} y1={-halfD + 10} x2={0} y2={-10} stroke="#475569" strokeWidth={4} strokeLinecap="round" />
+                <g transform={`scale(${1 / zoom})`}>
+                  <text x={0} y={halfD / 2} textAnchor="middle" fill="#0369a1" fontSize={9} fontWeight="bold" pointerEvents="none">
+                    SINK
+                  </text>
+                </g>
+              </g>
+            )}
+
+            {prop.propType === 'refrigerator' && (
+              <g>
+                <rect x={-halfW} y={-halfD} width={w} height={d} rx={8} fill="#e2e8f0" stroke="#0f172a" strokeWidth={3} />
+                <line x1={0} y1={-halfD} x2={0} y2={halfD} stroke="#64748b" strokeWidth={2} />
+                <rect x={-15} y={-halfD + 20} width={6} height={60} rx={2} fill="#0f172a" />
+                <rect x={9} y={-halfD + 20} width={6} height={60} rx={2} fill="#0f172a" />
+                <g transform={`scale(${1 / zoom})`}>
+                  <text x={0} y={4} textAnchor="middle" fill="#0f172a" fontSize={10} fontWeight="bold" pointerEvents="none">
+                    FRIDGE
+                  </text>
+                </g>
+              </g>
+            )}
+
+            {prop.propType === 'toilet' && (
+              <g>
+                <rect x={-halfW} y={-halfD} width={w} height={d * 0.35} rx={4} fill="#ffffff" stroke="#334155" strokeWidth={2} />
+                <ellipse cx={0} cy={halfD * 0.3} rx={halfW * 0.85} ry={d * 0.35} fill="#ffffff" stroke="#334155" strokeWidth={2} />
+                <ellipse cx={0} cy={halfD * 0.35} rx={halfW * 0.55} ry={d * 0.22} fill="#e0f2fe" stroke="#0284c7" strokeWidth={1} />
+                <g transform={`scale(${1 / zoom})`}>
+                  <text x={0} y={-halfD * 0.1} textAnchor="middle" fill="#0369a1" fontSize={8} fontWeight="bold" pointerEvents="none">
+                    WC
+                  </text>
+                </g>
+              </g>
+            )}
+
+            {prop.propType === 'shower' && (
+              <g>
+                <rect x={-halfW} y={-halfD} width={w} height={d} rx={4} fill="#f0fdf4" stroke="#059669" strokeWidth={2} />
+                <line x1={-halfW} y1={-halfD} x2={halfW} y2={halfD} stroke="#10b981" strokeWidth={1} strokeDasharray="6 4" />
+                <line x1={halfW} y1={-halfD} x2={-halfW} y2={halfD} stroke="#10b981" strokeWidth={1} strokeDasharray="6 4" />
+                <circle cx={0} cy={0} r={24} fill="#cbd5e1" stroke="#059669" strokeWidth={1.5} />
+                <g transform={`scale(${1 / zoom})`}>
+                  <text x={0} y={4} textAnchor="middle" fill="#047857" fontSize={10} fontWeight="bold" pointerEvents="none">
+                    SHOWER
+                  </text>
+                </g>
+              </g>
+            )}
+
+            {prop.propType === 'bathtub' && (
+              <g>
+                <rect x={-halfW} y={-halfD} width={w} height={d} rx={25} fill="#ffffff" stroke="#334155" strokeWidth={2.5} />
+                <rect x={-halfW + 30} y={-halfD + 30} width={w - 60} height={d - 60} rx={20} fill="#f0f9ff" stroke="#0284c7" strokeWidth={1.5} />
+                <circle cx={halfW - 80} cy={0} r={12} fill="#94a3b8" />
+                <g transform={`scale(${1 / zoom})`}>
+                  <text x={0} y={4} textAnchor="middle" fill="#0284c7" fontSize={10} fontWeight="bold" pointerEvents="none">
+                    BATHTUB
+                  </text>
+                </g>
+              </g>
+            )}
+
+            {(prop.propType === 'car_sedan' || prop.propType === 'car_suv') && (
+              <g>
+                <rect x={-halfW} y={-halfD} width={w} height={d} rx={16} fill="#f8fafc" stroke="#64748b" strokeWidth={2} strokeDasharray="10 5" />
+                <rect x={-halfW + 150} y={-halfD + 100} width={w - 300} height={d - 200} rx={40} fill="#334155" stroke="#0f172a" strokeWidth={3} />
+                <rect x={-halfW + 800} y={-halfD + 200} width={w - 1800} height={d - 400} rx={15} fill="#38bdf8" fillOpacity={0.6} />
+                <g transform={`scale(${1 / zoom})`}>
+                  <text x={0} y={4} textAnchor="middle" fill="#ffffff" fontSize={12} fontWeight="bold" pointerEvents="none">
+                    {prop.propType === 'car_suv' ? 'PARKING (SUV)' : 'PARKING (SEDAN)'}
                   </text>
                 </g>
               </g>

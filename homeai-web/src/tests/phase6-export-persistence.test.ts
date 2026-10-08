@@ -117,6 +117,22 @@ describe('Phase 6: Persistence, JSON Import/Export & SVG Blueprint Exporter', ()
       expect(svg).not.toContain('NaN');
       expect(svg.endsWith('</svg>')).toBe(true);
     });
+
+    it('renders architectural schedules, metric graphic scale bar, and dynamic North arrow', () => {
+      const myHome = getMyHomeProject();
+      myHome.siteContext = {
+        roadFacing: 'N',
+        northAngleDegrees: 45,
+        setbacks: { front: 3000, rear: 2000, left: 1500, right: 1500 },
+      };
+      const svg = exportFloorToSvg(myHome, myHome.activeFloorId);
+
+      expect(svg).toContain('class="scale-bar"');
+      expect(svg).toContain('GRAPHIC SCALE 1:100 METRIC');
+      expect(svg).toContain('class="room-schedule-table"');
+      expect(svg).toContain('ROOM SCHEDULE');
+      expect(svg).toContain('rotate(45)');
+    });
   });
 
   describe('Persistence Integration', () => {

@@ -1,17 +1,20 @@
-import { Project, Floor, Wall, Room, Door, Window, Prop } from "../domain/types";
+import { Project, Floor, Wall, Room, Door, Window, Prop, Staircase, SlabVoid, StructuralColumn } from "../domain/types";
 import { planAutonomousPlacement } from "./spatial-planner";
 import { auditFloorPlan, ArchitecturalSuggestion } from "./architect-rules";
-import { build2BHKLayout, build1BHKLayout, buildLivingRoomSuite, buildBedroomSuite } from "./architectural-layouts";
+import { build2BHKLayout, build1BHKLayout, buildLivingRoomSuite, buildBedroomSuite, buildDuplexLayout } from "./architectural-layouts";
 import { v4 as uuidv4 } from "uuid";
 
 export interface PlanGenerationAction {
-  type: "add_prop" | "add_room" | "add_wall" | "add_window" | "add_door";
+  type: "add_prop" | "add_room" | "add_wall" | "add_window" | "add_door" | "add_staircase" | "add_void" | "add_column";
   floorId: string;
   prop?: Prop;
   wall?: Wall;
   room?: Room;
   window?: Window;
   door?: Door;
+  staircase?: Staircase;
+  void?: SlabVoid;
+  column?: StructuralColumn;
   description: string;
 }
 
@@ -71,6 +74,80 @@ export function generatePlanFromPrompt(
   }
 
   // 3. Whole House / Complete Layout Generation Requests
+  const isDuplex = 
+    pLower.includes("duplex") || 
+    pLower.includes("two floor") || 
+    pLower.includes("two-floor") || 
+    pLower.includes("double height") || 
+    pLower.includes("double-height") || 
+    pLower.includes("2 floor") || 
+    pLower.includes("2-floor") || 
+    pLower.includes("g+1") ||
+    pLower.includes("g + 1") ||
+    pLower.includes("multi floor") ||
+    pLower.includes("multi-floor");
+
+  if (isDuplex) {
+    const groundFloorId = floor.id;
+    const existingF1 = project.floors.find(f => f.id !== groundFloorId && (f.level === 1 || f.name.toLowerCase().includes("first") || f.name.toLowerCase().includes("1")));
+    const firstFloorId = existingF1 ? existingF1.id : `floor-first-${uuidv4().slice(0, 8)}`;
+
+    const duplex = buildDuplexLayout(groundFloorId, firstFloorId, 0, 0);
+    const layoutActions: PlanGenerationAction[] = [];
+
+    // Ground floor actions
+    for (const wall of duplex.groundFloor.walls) {
+      layoutActions.push({ type: "add_wall", floorId: groundFloorId, wall, description: "Ground Floor Wall" });
+    }
+    for (const room of duplex.groundFloor.rooms) {
+      layoutActions.push({ type: "add_room", floorId: groundFloorId, room, description: room.name });
+    }
+    for (const prop of duplex.groundFloor.props) {
+      layoutActions.push({ type: "add_prop", floorId: groundFloorId, prop, description: prop.name });
+    }
+    for (const stair of duplex.groundFloor.stairs) {
+      layoutActions.push({ type: "add_staircase", floorId: groundFloorId, staircase: stair, description: "Dog-Leg Staircase (UP)" });
+    }
+    for (const col of duplex.groundFloor.columns) {
+      layoutActions.push({ type: "add_column", floorId: groundFloorId, column: col, description: "Structural RC Column" });
+    }
+
+    // First floor actions
+    for (const wall of duplex.firstFloor.walls) {
+      layoutActions.push({ type: "add_wall", floorId: firstFloorId, wall, description: "First Floor Wall" });
+    }
+    for (const room of duplex.firstFloor.rooms) {
+      layoutActions.push({ type: "add_room", floorId: firstFloorId, room, description: room.name });
+    }
+    for (const prop of duplex.firstFloor.props) {
+      layoutActions.push({ type: "add_prop", floorId: firstFloorId, prop, description: prop.name });
+    }
+    for (const stair of duplex.firstFloor.stairs) {
+      layoutActions.push({ type: "add_staircase", floorId: firstFloorId, staircase: stair, description: "Staircase Landing (DN)" });
+    }
+    for (const voidCut of duplex.firstFloor.voids) {
+      layoutActions.push({ type: "add_void", floorId: firstFloorId, void: voidCut, description: "Double-Height Slab Void" });
+    }
+    for (const col of duplex.firstFloor.columns) {
+      layoutActions.push({ type: "add_column", floorId: firstFloorId, column: col, description: "Aligned Structural RC Column" });
+    }
+
+    return {
+      message: `Successfully architected an Architectural Duplex Villa (${duplex.totalAreaM2} m² / ${Math.round(duplex.totalAreaM2 * 10.764)} sq ft) across Ground Floor and First Floor. Included 18-riser Blondel-compliant dog-leg staircase, double-height living room with slab void cut-out, 16 aligned structural RC columns, Vaastu-aligned modular kitchen (SE) & master spa suite (SW), guest bedroom, covered carport with parked vehicle, and scenic front terrace.`,
+      actions: layoutActions,
+      suggestions: [],
+      replaceFloor: true,
+      placementSummary: {
+        propsAdded: duplex.groundFloor.props.length + duplex.firstFloor.props.length,
+        roomsAffected: [
+          ...duplex.groundFloor.rooms.map(r => `G0: ${r.name}`),
+          ...duplex.firstFloor.rooms.map(r => `F1: ${r.name}`)
+        ],
+        viewingDistanceM: 3.2,
+      }
+    };
+  }
+
   const isLayoutRequest = 
     pLower.includes("2bhk") || 
     pLower.includes("2-bhk") || 

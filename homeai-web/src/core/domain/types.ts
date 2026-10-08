@@ -15,6 +15,69 @@ export type ArchitecturalStyle =
   | "mixed"
   | "indian_traditional";
 
+export type BuildingTypology =
+  | "single_family"
+  | "duplex_vertical"
+  | "duplex_side_by_side"
+  | "villa"
+  | "apartment"
+  | "townhouse";
+
+export type CompassOrientation = "N" | "E" | "S" | "W" | "NE" | "NW" | "SE" | "SW";
+
+export interface Setbacks {
+  front: number; // in mm
+  rear: number;  // in mm
+  left: number;  // in mm
+  right: number; // in mm
+}
+
+export interface SiteContext {
+  roadFacing: CompassOrientation;
+  northAngleDegrees: number; // 0 = Up (North), 90 = East, 180 = South, 270 = West
+  roadWidthMm?: number;
+  setbacks: Setbacks;
+}
+
+export type StairType =
+  | "straight"
+  | "dog_leg"
+  | "open_well"
+  | "spiral"
+  | "cantilever";
+
+export interface Staircase {
+  id: string;
+  floorId: string;
+  name?: string;
+  stairType: StairType;
+  position: Point2D; // insertion center/corner in mm
+  width: number; // total flight width in mm (e.g. 1000 - 1200 mm)
+  length: number; // total flight length / run in mm (e.g. 2400 - 3600 mm)
+  rotation: number; // in degrees: 0, 90, 180, 270
+  treadMm: number; // standard tread depth 250 - 300 mm
+  riserMm: number; // standard riser height 150 - 180 mm
+  stepCount: number; // standard 16 - 18 risers
+  direction: "up" | "down";
+  handrail?: boolean;
+}
+
+export interface SlabVoid {
+  id: string;
+  floorId: string;
+  name: string; // e.g. "Stairwell Opening", "Double Height Living Void"
+  polygon: Point2D[]; // void boundary polygon in mm
+}
+
+export interface StructuralColumn {
+  id: string;
+  floorId: string;
+  position: Point2D;
+  width: number; // in mm (e.g. 230)
+  depth: number; // in mm (e.g. 450)
+  rotation: number; // 0 or 90
+}
+
 export interface Point2D {
   x: number; // in millimeters
   y: number; // in millimeters
@@ -43,25 +106,48 @@ export interface ProjectMetadata {
   description?: string;
 }
 
+export type DoorType =
+  | "single_swing"
+  | "double_entry"
+  | "sliding_patio"
+  | "pocket"
+  | "bifold";
+
 export interface Door {
   id: string;
   wallId: string;
   floorId: string;
   offset: number; // distance in mm from wall.start along centerline
-  width: number; // in mm (standard 800 - 1000 mm)
+  width: number; // in mm (standard 800 - 1500 mm)
   height: number; // in mm (standard 2100 mm)
   swingDirection: "inward_left" | "inward_right" | "outward_left" | "outward_right";
+  doorType?: DoorType;
 }
+
+export type WindowType =
+  | "sliding"
+  | "casement"
+  | "louver_ventilator"
+  | "bay_window"
+  | "fixed";
 
 export interface Window {
   id: string;
   wallId: string;
   floorId: string;
   offset: number; // distance in mm from wall.start along centerline
-  width: number; // in mm (standard 1000 - 1500 mm)
-  height: number; // in mm (standard 1200 - 1400 mm)
-  sillHeight: number; // in mm from floor elevation (standard 900 mm)
+  width: number; // in mm (standard 1000 - 2400 mm)
+  height: number; // in mm (standard 1200 - 1500 mm)
+  sillHeight: number; // in mm from floor elevation (standard 900 mm; 1500 mm for ventilators)
+  windowType?: WindowType;
+  chajjaSunshade?: boolean; // external weather shade projection
 }
+
+export type WallType =
+  | "exterior_bearing" // 230 mm (9-inch brick)
+  | "interior_partition" // 115 mm (4.5-inch partition)
+  | "wet_chase" // 150 mm plumbing wall
+  | "parapet"; // 100 mm terrace railing wall
 
 export interface Wall {
   id: string;
@@ -70,6 +156,7 @@ export interface Wall {
   end: Point2D; // in mm
   thickness: number; // in mm, default 150 mm
   height?: number; // optional override for ceiling height
+  wallType?: WallType;
   doors: Door[];
   windows: Window[];
 }
@@ -102,7 +189,9 @@ export type PropCategory =
   | "entertainment"
   | "kitchen"
   | "bathroom"
-  | "office";
+  | "office"
+  | "parking"
+  | "circulation";
 
 export type PropType =
   | "tv"
@@ -114,7 +203,14 @@ export type PropType =
   | "coffee_table"
   | "toilet"
   | "shower"
-  | "sink";
+  | "sink"
+  | "counter_straight"
+  | "counter_l_shape"
+  | "hob_cooktop"
+  | "refrigerator"
+  | "bathtub"
+  | "car_sedan"
+  | "car_suv";
 
 export interface Prop {
   id: string;
@@ -145,6 +241,15 @@ export interface Floor {
   walls: Wall[];
   rooms: Room[];
   props?: Prop[];
+  stairs?: Staircase[];
+  voids?: SlabVoid[];
+  columns?: StructuralColumn[];
+}
+
+export interface DuplexConfig {
+  internalStairs: boolean;
+  doubleHeightVoid: boolean;
+  stairType?: StairType;
 }
 
 export interface Project {
@@ -155,6 +260,9 @@ export interface Project {
     width: number; // in mm
     depth: number; // in mm
   };
+  typology?: BuildingTypology;
+  siteContext?: SiteContext;
+  duplexConfig?: DuplexConfig;
   settings: ProjectSettings;
   preferences: DesignPreferences;
   metadata: ProjectMetadata;

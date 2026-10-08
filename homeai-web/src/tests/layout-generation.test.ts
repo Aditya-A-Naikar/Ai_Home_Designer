@@ -170,4 +170,30 @@ describe('Natural Language Intent Parser with Autonomous Room Generation', () =>
     expect(res.message).toContain('Neufert');
     expect(res.message).toContain('38mm');
   });
+
+  it('autonomously generates an Architectural Duplex Villa across Ground Floor and First Floor', () => {
+    const project = createEmptyProject();
+    const res = generatePlanFromPrompt('Build a duplex house with internal staircase and double height living room', project);
+
+    expect(res.message).toContain('Duplex');
+    expect(res.replaceFloor).toBe(true);
+
+    const stairs = res.actions.filter(a => a.type === 'add_staircase');
+    const voids = res.actions.filter(a => a.type === 'add_void');
+    const columns = res.actions.filter(a => a.type === 'add_column');
+    const rooms = res.actions.filter(a => a.type === 'add_room');
+    const props = res.actions.filter(a => a.type === 'add_prop');
+
+    // Both floors should have stairs (UP on G0, DN on F1)
+    expect(stairs.length).toBe(2);
+    // Double height void on first floor
+    expect(voids.length).toBe(1);
+    expect(voids[0].void?.name).toContain('DOUBLE HEIGHT');
+    // RC columns grid (16 columns per floor = 32 columns)
+    expect(columns.length).toBe(32);
+    // Enclosed rooms across both floors
+    expect(rooms.length).toBeGreaterThanOrEqual(10);
+    // Props across both floors (sedan, 75" TV, sofa, king bed, sanitaryware, etc.)
+    expect(props.length).toBeGreaterThanOrEqual(15);
+  });
 });

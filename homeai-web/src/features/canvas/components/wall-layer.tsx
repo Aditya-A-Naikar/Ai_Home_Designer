@@ -26,10 +26,28 @@ export function WallLayer({
     <g className="wall-layer">
       {walls.map((wall) => {
         const isWallSelected = wall.id === selectedElementId && (!selectedSubElement || selectedSubElement.type === 'wall');
-        const strokeColor = isWallSelected ? '#4f46e5' : '#334155'; // indigo-600 or slate-700
         const v = Vector2D.fromPoints(wall.start, wall.end);
         const angle = Math.atan2(v.y, v.x) * (180 / Math.PI);
-        
+
+        // Wall Typology Styling
+        let strokeColor = '#334155';
+        let strokeDash: string | undefined = undefined;
+
+        if (wall.wallType === 'exterior_bearing') {
+          strokeColor = '#0f172a'; // Deep charcoal/black for 230mm bearing walls
+        } else if (wall.wallType === 'interior_partition') {
+          strokeColor = '#64748b'; // Lighter slate for 115mm partitions
+        } else if (wall.wallType === 'parapet') {
+          strokeColor = '#94a3b8';
+          strokeDash = `${8 / zoom},${4 / zoom}`;
+        } else if (wall.wallType === 'wet_chase') {
+          strokeColor = '#1e293b';
+        }
+
+        if (isWallSelected) {
+          strokeColor = '#4f46e5';
+        }
+
         return (
           <g 
             key={wall.id} 
@@ -58,16 +76,17 @@ export function WallLayer({
               stroke={strokeColor}
               strokeWidth={wall.thickness}
               strokeLinecap="square"
+              strokeDasharray={strokeDash}
             />
             
-            {/* Render Doors Inline with Architectural Swing Arc */}
+            {/* Render Doors Inline with Architectural Typologies */}
             {wall.doors.map((door) => {
               const isDoorSelected = selectedSubElement?.type === 'door' && selectedSubElement.id === door.id;
               const halfW = door.width / 2;
               const halfT = wall.thickness / 2;
               const swing = door.swingDirection || 'inward_right';
+              const doorType = door.doorType || 'single_swing';
               
-              // Hinge and panel positions
               const isLeft = swing.includes('left');
               const isOutward = swing.includes('outward');
               const hingeX = isLeft ? -halfW : halfW;
@@ -100,24 +119,66 @@ export function WallLayer({
                   <line x1={-halfW} y1={-halfT} x2={-halfW} y2={halfT} stroke="#1e293b" strokeWidth={Math.max(3 / zoom, 2)} />
                   <line x1={halfW} y1={-halfT} x2={halfW} y2={halfT} stroke="#1e293b" strokeWidth={Math.max(3 / zoom, 2)} />
 
-                  {/* Open Door Panel Line (90 degrees to wall) */}
-                  <line 
-                    x1={hingeX} 
-                    y1={hingeY} 
-                    x2={hingeX} 
-                    y2={swingY} 
-                    stroke={isDoorSelected ? '#4f46e5' : '#475569'}
-                    strokeWidth={Math.max(3 / zoom, 2)} 
-                  />
+                  {/* DOUBLE ENTRY DOOR (Dual Swing Panels) */}
+                  {doorType === 'double_entry' ? (
+                    <>
+                      {/* Left Leaf Swing */}
+                      <line x1={-halfW} y1={hingeY} x2={-halfW} y2={swingY / 2} stroke={isDoorSelected ? '#4f46e5' : '#475569'} strokeWidth={Math.max(2.5 / zoom, 1.5)} />
+                      <path 
+                        d={`M 0 ${hingeY} A ${halfW} ${halfW} 0 0 ${isOutward ? 1 : 0} ${-halfW} ${swingY / 2}`}
+                        fill="none"
+                        stroke={isDoorSelected ? '#4f46e5' : '#94a3b8'}
+                        strokeWidth={Math.max(1.5 / zoom, 1)}
+                        strokeDasharray={`${5 / zoom},${3 / zoom}`}
+                      />
 
-                  {/* Quarter-Circle Swing Arc */}
-                  <path 
-                    d={`M ${isLeft ? halfW : -halfW} ${hingeY} A ${door.width} ${door.width} 0 0 ${arcSweep} ${hingeX} ${swingY}`}
-                    fill="none"
-                    stroke={isDoorSelected ? '#4f46e5' : '#94a3b8'}
-                    strokeWidth={Math.max(1.5 / zoom, 1)}
-                    strokeDasharray={`${6 / zoom},${4 / zoom}`}
-                  />
+                      {/* Right Leaf Swing */}
+                      <line x1={halfW} y1={hingeY} x2={halfW} y2={swingY / 2} stroke={isDoorSelected ? '#4f46e5' : '#475569'} strokeWidth={Math.max(2.5 / zoom, 1.5)} />
+                      <path 
+                        d={`M 0 ${hingeY} A ${halfW} ${halfW} 0 0 ${isOutward ? 0 : 1} ${halfW} ${swingY / 2}`}
+                        fill="none"
+                        stroke={isDoorSelected ? '#4f46e5' : '#94a3b8'}
+                        strokeWidth={Math.max(1.5 / zoom, 1)}
+                        strokeDasharray={`${5 / zoom},${3 / zoom}`}
+                      />
+                    </>
+                  ) : doorType === 'sliding_patio' ? (
+                    /* SLIDING PATIO GLASS DOOR */
+                    <>
+                      {/* Fixed panel */}
+                      <rect x={-halfW} y={-4 / zoom} width={halfW + 10} height={8 / zoom} fill="#e2e8f0" stroke="#0f172a" strokeWidth={1.5 / zoom} />
+                      {/* Sliding active panel */}
+                      <rect x={-10} y={-10 / zoom} width={halfW + 10} height={8 / zoom} fill="#cbd5e1" stroke="#0284c7" strokeWidth={1.5 / zoom} />
+                      {/* Slide motion arrows */}
+                      <line x1={10} y1={-15 / zoom} x2={halfW - 10} y2={-15 / zoom} stroke="#0284c7" strokeWidth={1 / zoom} />
+                      <polygon points={`${halfW - 10},${-15 / zoom} ${halfW - 16},${-18 / zoom} ${halfW - 16},${-12 / zoom}`} fill="#0284c7" />
+                    </>
+                  ) : doorType === 'pocket' ? (
+                    /* POCKET SLIDING DOOR (slides into wall slot) */
+                    <>
+                      <rect x={-halfW} y={-halfT / 2} width={door.width * 0.75} height={halfT} fill="#f1f5f9" stroke="#475569" strokeWidth={1.5 / zoom} />
+                      <line x1={door.width * 0.25 - halfW} y1={0} x2={halfW} y2={0} stroke="#94a3b8" strokeWidth={1 / zoom} strokeDasharray={`${3 / zoom},${3 / zoom}`} />
+                    </>
+                  ) : (
+                    /* STANDARD SINGLE SWING DOOR */
+                    <>
+                      <line 
+                        x1={hingeX} 
+                        y1={hingeY} 
+                        x2={hingeX} 
+                        y2={swingY} 
+                        stroke={isDoorSelected ? '#4f46e5' : '#475569'}
+                        strokeWidth={Math.max(3 / zoom, 2)} 
+                      />
+                      <path 
+                        d={`M ${isLeft ? halfW : -halfW} ${hingeY} A ${door.width} ${door.width} 0 0 ${arcSweep} ${hingeX} ${swingY}`}
+                        fill="none"
+                        stroke={isDoorSelected ? '#4f46e5' : '#94a3b8'}
+                        strokeWidth={Math.max(1.5 / zoom, 1)}
+                        strokeDasharray={`${6 / zoom},${4 / zoom}`}
+                      />
+                    </>
+                  )}
 
                   {/* Selection indicator outline */}
                   {isDoorSelected && (
@@ -137,11 +198,13 @@ export function WallLayer({
               );
             })}
             
-            {/* Render Windows Inline with Architectural Symbol */}
+            {/* Render Windows Inline with Architectural Openings */}
             {wall.windows.map((win) => {
               const isWinSelected = selectedSubElement?.type === 'window' && selectedSubElement.id === win.id;
               const halfW = win.width / 2;
               const halfT = wall.thickness / 2;
+              const winType = win.windowType || 'sliding';
+              const hasChajja = win.chajjaSunshade ?? (wall.wallType === 'exterior_bearing');
 
               return (
                 <g 
@@ -153,13 +216,30 @@ export function WallLayer({
                   }}
                   className="cursor-pointer"
                 >
+                  {/* EXTERIOR CHAJJA SUNSHADE (Tropical / NBC Weather Protection) */}
+                  {hasChajja && (
+                    <g pointerEvents="none">
+                      <line
+                        x1={-halfW - 150}
+                        y1={halfT + 450}
+                        x2={halfW + 150}
+                        y2={halfT + 450}
+                        stroke="#64748b"
+                        strokeWidth={Math.max(1.5 / zoom, 1)}
+                        strokeDasharray={`${6 / zoom},${4 / zoom}`}
+                      />
+                      <line x1={-halfW - 150} y1={halfT} x2={-halfW - 150} y2={halfT + 450} stroke="#94a3b8" strokeWidth={1 / zoom} strokeDasharray={`${4 / zoom},${3 / zoom}`} />
+                      <line x1={halfW + 150} y1={halfT} x2={halfW + 150} y2={halfT + 450} stroke="#94a3b8" strokeWidth={1 / zoom} strokeDasharray={`${4 / zoom},${3 / zoom}`} />
+                    </g>
+                  )}
+
                   {/* Window Wall Cutout */}
                   <rect 
                     x={-halfW} 
                     y={-halfT - 1} 
                     width={win.width} 
                     height={wall.thickness + 2} 
-                    fill="#f0f9ff" // subtle sky tint
+                    fill="#f0f9ff" 
                     stroke={isWinSelected ? '#4f46e5' : '#0284c7'}
                     strokeWidth={Math.max(1.5 / zoom, 1)}
                   />
@@ -168,23 +248,42 @@ export function WallLayer({
                   <line x1={-halfW} y1={-halfT} x2={-halfW} y2={halfT} stroke="#0f172a" strokeWidth={Math.max(3 / zoom, 2)} />
                   <line x1={halfW} y1={-halfT} x2={halfW} y2={halfT} stroke="#0f172a" strokeWidth={Math.max(3 / zoom, 2)} />
 
-                  {/* Double glass pane lines */}
-                  <line 
-                    x1={-halfW} 
-                    y1={-halfT / 3} 
-                    x2={halfW} 
-                    y2={-halfT / 3} 
-                    stroke={isWinSelected ? '#4f46e5' : '#0284c7'} 
-                    strokeWidth={Math.max(1.5 / zoom, 1)} 
-                  />
-                  <line 
-                    x1={-halfW} 
-                    y1={halfT / 3} 
-                    x2={halfW} 
-                    y2={halfT / 3} 
-                    stroke={isWinSelected ? '#4f46e5' : '#0284c7'} 
-                    strokeWidth={Math.max(1.5 / zoom, 1)} 
-                  />
+                  {/* High-Sill Louvered Ventilator Symbol (Bathrooms / Toilets) */}
+                  {winType === 'louver_ventilator' ? (
+                    <g pointerEvents="none">
+                      {[-0.6, -0.2, 0.2, 0.6].map((lFrac, lIdx) => (
+                        <line
+                          key={`louver-${lIdx}`}
+                          x1={-halfW + 15}
+                          y1={halfT * lFrac - 4}
+                          x2={halfW - 15}
+                          y2={halfT * lFrac + 4}
+                          stroke="#0284c7"
+                          strokeWidth={Math.max(1.5 / zoom, 1)}
+                        />
+                      ))}
+                    </g>
+                  ) : (
+                    /* Double glass pane lines */
+                    <>
+                      <line 
+                        x1={-halfW} 
+                        y1={-halfT / 3} 
+                        x2={halfW} 
+                        y2={-halfT / 3} 
+                        stroke={isWinSelected ? '#4f46e5' : '#0284c7'} 
+                        strokeWidth={Math.max(1.5 / zoom, 1)} 
+                      />
+                      <line 
+                        x1={-halfW} 
+                        y1={halfT / 3} 
+                        x2={halfW} 
+                        y2={halfT / 3} 
+                        stroke={isWinSelected ? '#4f46e5' : '#0284c7'} 
+                        strokeWidth={Math.max(1.5 / zoom, 1)} 
+                      />
+                    </>
+                  )}
 
                   {/* Exterior Sill line */}
                   <line 

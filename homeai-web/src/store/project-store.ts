@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import { Project, Wall, Room, Door, Window, Floor, Point2D, Prop } from '@/core/domain/types';
+import { Project, Wall, Room, Door, Window, Floor, Point2D, Prop, Staircase, SlabVoid, StructuralColumn } from '@/core/domain/types';
 import { PlanGenerationAction } from '@/core/ai/plan-generator';
 import { projectRepository } from '@/infrastructure/persistence/local-storage-project-repository';
 import { autoDetectRooms } from '@/core/geometry/room-utils';
@@ -51,6 +51,21 @@ interface ProjectActions {
   addProp: (floorId: string, prop: Prop) => void;
   updateProp: (floorId: string, propId: string, updater: (p: Prop) => void) => void;
   deleteProp: (floorId: string, propId: string) => void;
+
+  // Vertical Circulation: Stairs
+  addStaircase: (floorId: string, stair: Staircase) => void;
+  updateStaircase: (floorId: string, stairId: string, updater: (s: Staircase) => void) => void;
+  deleteStaircase: (floorId: string, stairId: string) => void;
+
+  // Slab Voids (Double-height & stair cutouts)
+  addSlabVoid: (floorId: string, voidItem: SlabVoid) => void;
+  updateSlabVoid: (floorId: string, voidId: string, updater: (v: SlabVoid) => void) => void;
+  deleteSlabVoid: (floorId: string, voidId: string) => void;
+
+  // Structural Columns
+  addColumn: (floorId: string, col: StructuralColumn) => void;
+  updateColumn: (floorId: string, colId: string, updater: (c: StructuralColumn) => void) => void;
+  deleteColumn: (floorId: string, colId: string) => void;
 
   undo: () => void;
   redo: () => void;
@@ -329,6 +344,90 @@ export const useProjectStore = create<ProjectState & ProjectActions>()(
       }
       useCanvasStore.getState().markModified(true);
     }),
+
+    // Stairs
+    addStaircase: (floorId, stair) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      if (floor) {
+        if (!floor.stairs) floor.stairs = [];
+        floor.stairs.push(stair);
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    updateStaircase: (floorId, stairId, updater) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      const stair = floor?.stairs?.find(s => s.id === stairId);
+      if (stair) updater(stair);
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    deleteStaircase: (floorId, stairId) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      if (floor && floor.stairs) {
+        floor.stairs = floor.stairs.filter(s => s.id !== stairId);
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    // Slab Voids
+    addSlabVoid: (floorId, voidItem) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      if (floor) {
+        if (!floor.voids) floor.voids = [];
+        floor.voids.push(voidItem);
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    updateSlabVoid: (floorId, voidId, updater) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      const voidItem = floor?.voids?.find(v => v.id === voidId);
+      if (voidItem) updater(voidItem);
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    deleteSlabVoid: (floorId, voidId) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      if (floor && floor.voids) {
+        floor.voids = floor.voids.filter(v => v.id !== voidId);
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    // Columns
+    addColumn: (floorId, col) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      if (floor) {
+        if (!floor.columns) floor.columns = [];
+        floor.columns.push(col);
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    updateColumn: (floorId, colId, updater) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      const col = floor?.columns?.find(c => c.id === colId);
+      if (col) updater(col);
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    deleteColumn: (floorId, colId) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      if (floor && floor.columns) {
+        floor.columns = floor.columns.filter(c => c.id !== colId);
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
     
     undo: () => set((state) => {
       if (state.past.length === 0 || !state.currentProject) return;
@@ -349,30 +448,81 @@ export const useProjectStore = create<ProjectState & ProjectActions>()(
     applyPlanGenerationActions: (floorId, actions, replaceFloor = false) => set((state) => {
       if (!state.currentProject) return;
       pushHistory(state);
-      const floor = state.currentProject.floors.find(f => f.id === floorId) || state.currentProject.floors[0];
-      if (!floor) return;
+      const defaultFloor = state.currentProject.floors.find(f => f.id === floorId) || state.currentProject.floors[0];
+      if (!defaultFloor) return;
 
+      const affectedFloorIds = new Set<string>();
+      for (const act of actions) {
+        if (act.floorId) affectedFloorIds.add(act.floorId);
+      }
+      if (affectedFloorIds.size === 0) affectedFloorIds.add(defaultFloor.id);
+
+      // If replacing floor, clear all affected floors
       if (replaceFloor) {
-        floor.walls = [];
-        floor.rooms = [];
-        floor.props = [];
+        for (const fId of affectedFloorIds) {
+          const fl = state.currentProject.floors.find(f => f.id === fId);
+          if (fl) {
+            fl.walls = [];
+            fl.rooms = [];
+            fl.props = [];
+            fl.stairs = [];
+            fl.voids = [];
+            fl.columns = [];
+          }
+        }
       }
 
-      if (!floor.props) floor.props = [];
-
       for (const act of actions) {
+        const targetFloorId = act.floorId || defaultFloor.id;
+        let targetFloor = state.currentProject.floors.find(f => f.id === targetFloorId);
+        if (!targetFloor) {
+          const isL1 = targetFloorId.includes('1') || targetFloorId.includes('first') || targetFloorId.includes('ff');
+          const newFloor: Floor = {
+            id: targetFloorId,
+            projectId: state.currentProject.id,
+            name: isL1 ? 'First Floor (Level 1)' : `Floor ${state.currentProject.floors.length}`,
+            level: isL1 ? 1 : state.currentProject.floors.length,
+            elevation: isL1 ? 3000 : state.currentProject.floors.length * 3000,
+            height: 3000,
+            walls: [],
+            rooms: [],
+            props: [],
+            stairs: [],
+            voids: [],
+            columns: [],
+          };
+          state.currentProject.floors.push(newFloor);
+          targetFloor = newFloor;
+        }
+
+        if (!targetFloor.props) targetFloor.props = [];
+        if (!targetFloor.stairs) targetFloor.stairs = [];
+        if (!targetFloor.voids) targetFloor.voids = [];
+        if (!targetFloor.columns) targetFloor.columns = [];
+
+        const curFloor = targetFloor;
         if (act.type === 'add_wall' && act.wall) {
-          floor.walls.push(act.wall);
+          curFloor.walls.push(act.wall);
         } else if (act.type === 'add_room' && act.room) {
-          floor.rooms.push(act.room);
+          curFloor.rooms.push(act.room);
         } else if (act.type === 'add_prop' && act.prop) {
-          floor.props.push(act.prop);
+          if (!curFloor.props) curFloor.props = [];
+          curFloor.props.push(act.prop);
         } else if (act.type === 'add_door' && act.door) {
-          const wall = floor.walls.find(w => w.id === act.door?.wallId);
+          const wall = curFloor.walls.find(w => w.id === act.door?.wallId);
           if (wall) wall.doors.push(act.door);
         } else if (act.type === 'add_window' && act.window) {
-          const wall = floor.walls.find(w => w.id === act.window?.wallId);
+          const wall = curFloor.walls.find(w => w.id === act.window?.wallId);
           if (wall) wall.windows.push(act.window);
+        } else if (act.type === 'add_staircase' && act.staircase) {
+          if (!curFloor.stairs) curFloor.stairs = [];
+          curFloor.stairs.push(act.staircase);
+        } else if (act.type === 'add_void' && act.void) {
+          if (!curFloor.voids) curFloor.voids = [];
+          curFloor.voids.push(act.void);
+        } else if (act.type === 'add_column' && act.column) {
+          if (!curFloor.columns) curFloor.columns = [];
+          curFloor.columns.push(act.column);
         }
       }
       useCanvasStore.getState().markModified(true);

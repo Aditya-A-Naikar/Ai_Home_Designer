@@ -5,7 +5,7 @@ import { useProjectStore } from '@/store/project-store';
 import { useCanvasStore } from '@/store/canvas-store';
 import { PROP_PRESETS, planAutonomousPlacement } from '@/core/ai/spatial-planner';
 import { PropCategory, Prop } from '@/core/domain/types';
-import { X, Sparkles, Tv, Armchair, BedDouble, Utensils, Briefcase, Check, Plus } from 'lucide-react';
+import { X, Sparkles, Tv, Armchair, BedDouble, Utensils, Briefcase, Check, Plus, CookingPot, Bath, Car } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
@@ -24,6 +24,7 @@ export function PropsCatalogModal({ isOpen, onClose }: PropsCatalogModalProps) {
   const [selectedTvInches, setSelectedTvInches] = useState<number>(75);
   const [selectedBedSize, setSelectedBedSize] = useState<string>('King');
   const [selectedSofaShape, setSelectedSofaShape] = useState<string>('l_shape');
+  const [targetRoomId, setTargetRoomId] = useState<string>('auto');
   const [notification, setNotification] = useState<string | null>(null);
 
   if (!isOpen) return null;
@@ -36,6 +37,9 @@ export function PropsCatalogModal({ isOpen, onClose }: PropsCatalogModalProps) {
     { id: 'living', label: 'Sofas & Seating', icon: <Armchair className="h-4 w-4" /> },
     { id: 'bedroom', label: 'Beds & Closets', icon: <BedDouble className="h-4 w-4" /> },
     { id: 'dining', label: 'Dining', icon: <Utensils className="h-4 w-4" /> },
+    { id: 'kitchen', label: 'Kitchen & Modular', icon: <CookingPot className="h-4 w-4" /> },
+    { id: 'bathroom', label: 'Sanitary & Bath', icon: <Bath className="h-4 w-4" /> },
+    { id: 'parking', label: 'Parking & Porch', icon: <Car className="h-4 w-4" /> },
     { id: 'office', label: 'Work & Study', icon: <Briefcase className="h-4 w-4" /> },
   ];
 
@@ -79,7 +83,12 @@ export function PropsCatalogModal({ isOpen, onClose }: PropsCatalogModalProps) {
       overrides.shape = selectedSofaShape as 'rectangular' | 'l_shape' | 'curved' | 'round';
     }
 
-    const plan = planAutonomousPlacement(activeFloor, keyToPlace, undefined, overrides);
+    const plan = planAutonomousPlacement(
+      activeFloor,
+      keyToPlace,
+      targetRoomId === 'auto' ? undefined : targetRoomId,
+      overrides
+    );
 
     if (plan) {
       addProp(activeFloor.id, plan.prop);
@@ -189,6 +198,23 @@ export function PropsCatalogModal({ isOpen, onClose }: PropsCatalogModalProps) {
             <div>
               <h3 className="font-bold text-sm text-slate-900">{activePreset.name}</h3>
               <p className="text-xs text-slate-500 mt-0.5">Customize specifications before placing</p>
+            </div>
+
+            {/* Room Destination Picker */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-700">Target Enclosed Room</label>
+              <select
+                value={targetRoomId}
+                onChange={(e) => setTargetRoomId(e.target.value)}
+                className="w-full text-xs font-medium bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value="auto">✨ Auto-Detect Best Room (AI)</option>
+                {activeFloor?.rooms.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* TV Screen Size Selector */}

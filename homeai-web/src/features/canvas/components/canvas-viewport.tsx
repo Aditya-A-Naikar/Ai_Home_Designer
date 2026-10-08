@@ -7,9 +7,13 @@ import { GridLayer } from './grid-layer';
 import { WallLayer } from './wall-layer';
 import { RoomLayer } from './room-layer';
 import { PropLayer } from './prop-layer';
+import { StairLayer } from './stair-layer';
+import { VoidLayer } from './void-layer';
+import { ColumnLayer } from './column-layer';
 import { DimensionsLayer } from './dimensions-layer';
 import { screenToMm } from '@/core/canvas/transform';
-import { Point2D, Wall, Door, Window } from '@/core/domain/types';
+import { Point2D, Wall, Door, Window, StructuralColumn } from '@/core/domain/types';
+import { createStairPreset } from '@/core/geometry/stair-utils';
 import { v4 as uuidv4 } from 'uuid';
 import { 
   snapToGrid, 
@@ -55,6 +59,7 @@ export function CanvasViewport() {
     orthoMode: enableOrthoMode,
     gridSize,
     showAllDimensions,
+    showUnderlay,
     doorWidth,
     doorSwing,
     windowWidth,
@@ -73,7 +78,14 @@ export function CanvasViewport() {
     deleteWindow,
     deleteRoom,
     updateProp,
-    deleteProp
+    deleteProp,
+    addStaircase,
+    updateStaircase,
+    deleteStaircase,
+    deleteSlabVoid,
+    addColumn,
+    updateColumn,
+    deleteColumn,
   } = useProjectStore();
   
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -97,11 +109,12 @@ export function CanvasViewport() {
   // Snap feedback indicator
   const [snapFeedback, setSnapFeedback] = useState<SnapFeedback | null>(null);
 
-  // Prop dragging state
-  const [draggingProp, setDraggingProp] = useState<{
-    propId: string;
+  // Unified Element dragging state (props, stairs, columns)
+  const [draggingEntity, setDraggingEntity] = useState<{
+    type: 'prop' | 'stair' | 'column';
+    id: string;
     startPointerMm: Point2D;
-    initialPropPos: Point2D;
+    initialPos: Point2D;
     hasMoved: boolean;
   } | null>(null);
 
@@ -185,6 +198,15 @@ export function CanvasViewport() {
           } else if (selectedSubElement.type === 'prop') {
             deleteProp(activeFloor.id, selectedSubElement.id);
             selectSubElement(null);
+          } else if (selectedSubElement.type === 'stair') {
+            deleteStaircase(activeFloor.id, selectedSubElement.id);
+            selectSubElement(null);
+          } else if (selectedSubElement.type === 'column') {
+            deleteColumn(activeFloor.id, selectedSubElement.id);
+            selectSubElement(null);
+          } else if (selectedSubElement.type === 'void') {
+            deleteSlabVoid(activeFloor.id, selectedSubElement.id);
+            selectSubElement(null);
           }
         } else if (selectedElementId) {
           deleteWall(activeFloor.id, selectedElementId);
@@ -205,7 +227,7 @@ export function CanvasViewport() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [currentProject, selectedSubElement, selectedElementId, deleteDoor, deleteWindow, deleteWall, deleteRoom, deleteProp, selectElement, selectSubElement, setTool, tool, roomVertices, finishRoomPolygon]);
+  }, [currentProject, selectedSubElement, selectedElementId, deleteDoor, deleteWindow, deleteWall, deleteRoom, deleteProp, deleteStaircase, deleteColumn, deleteSlabVoid, selectElement, selectSubElement, setTool, tool, roomVertices, finishRoomPolygon]);
 
   const getPointerMm = useCallback((e: React.MouseEvent | React.PointerEvent) => {
     if (!svgRef.current) return { x: 0, y: 0 };
@@ -216,6 +238,14 @@ export function CanvasViewport() {
   const activeFloor = currentProject?.floors.find((f) => f.id === currentProject.activeFloorId);
   const walls = useMemo(() => activeFloor?.walls || [], [activeFloor?.walls]);
   const rooms = useMemo(() => activeFloor?.rooms || [], [activeFloor?.rooms]);
+
+  // Multi-floor underlay/ghosting: Floor immediately below current floor
+  const underlayFloor = useMemo(() => {
+    if (!currentProject || !showUnderlay) return null;
+    const curFloor = currentProject.floors.find((f) => f.id === currentProject.activeFloorId);
+    if (!curFloor || curFloor.level <= 0) return null;
+    return currentProject.floors.find((f) => f.level === curFloor.level - 1) || null;
+  }, [currentProject, showUnderlay]);
 
   // Apply snapping pipeline to raw mm point
   const applySnapping = useCallback((rawPt: Point2D, referenceStart?: Point2D, isShiftPressed: boolean = false): { point: Point2D; feedback: SnapFeedback | null } => {
@@ -252,18 +282,61 @@ export function CanvasViewport() {
     if (e.button !== 0) return;
     e.stopPropagation();
 
-    const activeFloor = currentProject?.floors.find(f => f.id === currentProject.activeFloorId);
-    const prop = activeFloor?.props?.find(p => p.id === propId);
+    const activeFl = currentProject?.floors.find(f => f.id === currentProject.activeFloorId);
+    const prop = activeFl?.props?.find(p => p.id === propId);
     if (!prop) return;
 
     selectSubElement({ type: 'prop', id: propId });
     selectElement(null);
 
     const pointerMm = getPointerMm(e);
-    setDraggingProp({
-      propId,
+    setDraggingEntity({
+      type: 'prop',
+      id: propId,
       startPointerMm: pointerMm,
-      initialPropPos: { ...prop.position },
+      initialPos: { ...prop.position },
+      hasMoved: false,
+    });
+  };
+
+  const handleStairPointerDown = (e: React.PointerEvent, stairId: string) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+
+    const activeFl = currentProject?.floors.find(f => f.id === currentProject.activeFloorId);
+    const stair = activeFl?.stairs?.find(s => s.id === stairId);
+    if (!stair) return;
+
+    selectSubElement({ type: 'stair', id: stairId });
+    selectElement(null);
+
+    const pointerMm = getPointerMm(e);
+    setDraggingEntity({
+      type: 'stair',
+      id: stairId,
+      startPointerMm: pointerMm,
+      initialPos: { ...stair.position },
+      hasMoved: false,
+    });
+  };
+
+  const handleColumnPointerDown = (e: React.PointerEvent, colId: string) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+
+    const activeFl = currentProject?.floors.find(f => f.id === currentProject.activeFloorId);
+    const col = activeFl?.columns?.find(c => c.id === colId);
+    if (!col) return;
+
+    selectSubElement({ type: 'column', id: colId });
+    selectElement(null);
+
+    const pointerMm = getPointerMm(e);
+    setDraggingEntity({
+      type: 'column',
+      id: colId,
+      startPointerMm: pointerMm,
+      initialPos: { ...col.position },
       hasMoved: false,
     });
   };
@@ -287,6 +360,34 @@ export function CanvasViewport() {
       const rawPt = getPointerMm(e);
       const { point: pt } = applySnapping(rawPt, undefined, e.shiftKey);
       setDrawingWall({ start: pt, current: pt });
+    }
+
+    if (tool === 'stair' && currentProject) {
+      const rawPt = getPointerMm(e);
+      const { point: pt } = applySnapping(rawPt, undefined, e.shiftKey);
+      const newStair = createStairPreset('dog_leg', currentProject.activeFloorId, { x: Math.round(pt.x), y: Math.round(pt.y) });
+      addStaircase(currentProject.activeFloorId, newStair);
+      selectSubElement({ type: 'stair', id: newStair.id });
+      setTool('select');
+      return;
+    }
+
+    if (tool === 'column' && currentProject) {
+      const rawPt = getPointerMm(e);
+      const { point: pt } = applySnapping(rawPt, undefined, e.shiftKey);
+      const newColId = uuidv4();
+      const newCol: StructuralColumn = {
+        id: newColId,
+        floorId: currentProject.activeFloorId,
+        position: { x: Math.round(pt.x), y: Math.round(pt.y) },
+        width: 230,
+        depth: 450,
+        rotation: 0,
+      };
+      addColumn(currentProject.activeFloorId, newCol);
+      selectSubElement({ type: 'column', id: newColId });
+      setTool('select');
+      return;
     }
 
     if ((tool === 'door' || tool === 'window') && ghostPlacement && ghostPlacement.valid && currentProject) {
@@ -357,15 +458,15 @@ export function CanvasViewport() {
 
     const rawPt = getPointerMm(e);
 
-    // Prop dragging
-    if (draggingProp && currentProject) {
-      const activeFloor = currentProject.floors.find(f => f.id === currentProject.activeFloorId);
-      if (activeFloor) {
-        const dx = rawPt.x - draggingProp.startPointerMm.x;
-        const dy = rawPt.y - draggingProp.startPointerMm.y;
+    // Entity dragging (props, stairs, columns)
+    if (draggingEntity && currentProject) {
+      const activeFl = currentProject.floors.find(f => f.id === currentProject.activeFloorId);
+      if (activeFl) {
+        const dx = rawPt.x - draggingEntity.startPointerMm.x;
+        const dy = rawPt.y - draggingEntity.startPointerMm.y;
 
-        let targetX = draggingProp.initialPropPos.x + dx;
-        let targetY = draggingProp.initialPropPos.y + dy;
+        let targetX = draggingEntity.initialPos.x + dx;
+        let targetY = draggingEntity.initialPos.y + dy;
 
         // Snapping to grid if enabled
         if (enableSnapGrid) {
@@ -373,12 +474,22 @@ export function CanvasViewport() {
           targetY = Math.round(targetY / gridSize) * gridSize;
         }
 
-        updateProp(activeFloor.id, draggingProp.propId, (p) => {
-          p.position = { x: Math.round(targetX), y: Math.round(targetY) };
-        });
+        if (draggingEntity.type === 'prop') {
+          updateProp(activeFl.id, draggingEntity.id, (p) => {
+            p.position = { x: Math.round(targetX), y: Math.round(targetY) };
+          });
+        } else if (draggingEntity.type === 'stair') {
+          updateStaircase(activeFl.id, draggingEntity.id, (s) => {
+            s.position = { x: Math.round(targetX), y: Math.round(targetY) };
+          });
+        } else if (draggingEntity.type === 'column') {
+          updateColumn(activeFl.id, draggingEntity.id, (c) => {
+            c.position = { x: Math.round(targetX), y: Math.round(targetY) };
+          });
+        }
 
-        if (!draggingProp.hasMoved) {
-          setDraggingProp(prev => prev ? { ...prev, hasMoved: true } : null);
+        if (!draggingEntity.hasMoved) {
+          setDraggingEntity(prev => prev ? { ...prev, hasMoved: true } : null);
         }
       }
       return;
@@ -454,8 +565,8 @@ export function CanvasViewport() {
       return;
     }
 
-    if (draggingProp) {
-      setDraggingProp(null);
+    if (draggingEntity) {
+      setDraggingEntity(null);
       return;
     }
 
@@ -581,6 +692,38 @@ export function CanvasViewport() {
             gridSize={gridSize} 
           />
 
+          {/* Multi-Floor Underlay / Ghosting Layer (Shows floor below faintly for alignment) */}
+          {underlayFloor && (
+            <g id="underlay-ghost-layer" opacity={0.35} pointerEvents="none">
+              {underlayFloor.walls.map((uw) => (
+                <line
+                  key={`ghost-wall-${uw.id}`}
+                  x1={uw.start.x}
+                  y1={uw.start.y}
+                  x2={uw.end.x}
+                  y2={uw.end.y}
+                  stroke="#64748b"
+                  strokeWidth={uw.thickness}
+                  strokeDasharray={`${6 / zoom},${4 / zoom}`}
+                  strokeLinecap="square"
+                />
+              ))}
+              {underlayFloor.columns?.map((uc) => (
+                <rect
+                  key={`ghost-col-${uc.id}`}
+                  x={uc.position.x - uc.width / 2}
+                  y={uc.position.y - uc.depth / 2}
+                  width={uc.width}
+                  height={uc.depth}
+                  fill="#94a3b8"
+                  stroke="#475569"
+                  strokeWidth={1 / zoom}
+                  strokeDasharray={`${3 / zoom},${3 / zoom}`}
+                />
+              ))}
+            </g>
+          )}
+
           {/* Rooms Layer */}
           <RoomLayer 
             rooms={rooms} 
@@ -596,6 +739,27 @@ export function CanvasViewport() {
               }
             }} 
             preferredUnit={currentProject?.settings.preferredUnit || 'mm'} 
+          />
+
+          {/* Slab Voids Layer (Double-Height living cutouts, stairwells) */}
+          <VoidLayer
+            voids={activeFloor?.voids || []}
+            zoom={zoom}
+            selectedSubElement={selectedSubElement}
+            onSelectVoid={(voidId) => {
+              selectSubElement({ type: 'void', id: voidId });
+            }}
+          />
+
+          {/* Vertical Circulation: Staircases Layer */}
+          <StairLayer
+            stairs={activeFloor?.stairs || []}
+            zoom={zoom}
+            selectedSubElement={selectedSubElement}
+            onSelectStair={(stairId) => {
+              selectSubElement({ type: 'stair', id: stairId });
+            }}
+            onStairPointerDown={handleStairPointerDown}
           />
 
           {/* Props & Furniture Accessories Layer */}
@@ -620,8 +784,35 @@ export function CanvasViewport() {
                 });
               }
             }}
-            isDraggingProp={!!draggingProp}
-            draggingPropId={draggingProp?.propId}
+            isDraggingProp={draggingEntity?.type === 'prop'}
+            draggingPropId={draggingEntity?.type === 'prop' ? draggingEntity.id : undefined}
+          />
+
+          {/* Walls Layer with Doors and Windows */}
+          <WallLayer 
+            walls={walls} 
+            zoom={zoom} 
+            selectedElementId={selectedElementId} 
+            selectedSubElement={selectedSubElement}
+            onSelect={(id) => {
+              selectElement(id);
+              selectSubElement({ type: 'wall', id });
+            }}
+            onSelectSubElement={(sel) => {
+              selectSubElement(sel);
+            }}
+            onEndpointPointerDown={handleEndpointPointerDown}
+          />
+
+          {/* Structural RC Columns Grid Layer */}
+          <ColumnLayer
+            columns={activeFloor?.columns || []}
+            zoom={zoom}
+            selectedSubElement={selectedSubElement}
+            onSelectColumn={(colId) => {
+              selectSubElement({ type: 'column', id: colId });
+            }}
+            onColumnPointerDown={handleColumnPointerDown}
           />
 
           {/* Room Polygon In-Progress Drawing */}
@@ -648,22 +839,6 @@ export function CanvasViewport() {
               ))}
             </g>
           )}
-
-          {/* Walls Layer with Doors and Windows */}
-          <WallLayer 
-            walls={walls} 
-            zoom={zoom} 
-            selectedElementId={selectedElementId} 
-            selectedSubElement={selectedSubElement}
-            onSelect={(id) => {
-              selectElement(id);
-              selectSubElement({ type: 'wall', id });
-            }}
-            onSelectSubElement={(sel) => {
-              selectSubElement(sel);
-            }}
-            onEndpointPointerDown={handleEndpointPointerDown}
-          />
           
           {/* Wall Drawing Live Preview */}
           {tool === 'wall' && drawingWall && (

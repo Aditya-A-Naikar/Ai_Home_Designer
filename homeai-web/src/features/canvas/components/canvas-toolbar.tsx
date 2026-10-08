@@ -29,7 +29,8 @@ import {
   Home,
   PanelLeft,
   ChevronDown,
-  Sparkles
+  Sparkles,
+  Layers
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { fitToContent } from '@/core/canvas/transform';
@@ -53,6 +54,8 @@ export function CanvasToolbar() {
     toggleOrthoMode,
     showAllDimensions,
     toggleShowAllDimensions,
+    showUnderlay,
+    toggleShowUnderlay,
     leftSidebarOpen,
     toggleLeftSidebar,
     aiAdvisorOpen,
@@ -141,6 +144,28 @@ export function CanvasToolbar() {
     { id: 'room', icon: <Square className="h-4 w-4" />, label: 'Room', shortcut: 'R' },
     { id: 'door', icon: <DoorOpen className="h-4 w-4" />, label: 'Door', shortcut: 'D' },
     { id: 'window', icon: <AppWindow className="h-4 w-4" />, label: 'Window', shortcut: 'Win' },
+    { 
+      id: 'stair', 
+      icon: (
+        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M19 5h-4v4h-4v4H7v4H3v2h18V5z" />
+        </svg>
+      ), 
+      label: 'Stairs', 
+      shortcut: 'S' 
+    },
+    { 
+      id: 'column', 
+      icon: (
+        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="5" y="4" width="14" height="16" rx="1" />
+          <line x1="9" y1="4" x2="9" y2="20" />
+          <line x1="15" y1="4" x2="15" y2="20" />
+        </svg>
+      ), 
+      label: 'Column', 
+      shortcut: 'C' 
+    },
   ];
 
   return (
@@ -255,6 +280,17 @@ export function CanvasToolbar() {
           >
             <Ruler className="h-3 w-3" />
             <span>Dims</span>
+          </button>
+
+          <button
+            onClick={toggleShowUnderlay}
+            className={`h-8 px-2 rounded-md text-[11px] flex items-center gap-1 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              showUnderlay ? 'bg-amber-100 text-amber-800 font-semibold shadow-xs' : 'text-slate-600 hover:bg-slate-200/60'
+            }`}
+            title="Toggle Multi-Floor Ghost Underlay of Lower Floor"
+          >
+            <Layers className="h-3 w-3" />
+            <span>Underlay</span>
           </button>
         </div>
       </div>

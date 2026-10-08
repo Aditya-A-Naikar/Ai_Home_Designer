@@ -153,6 +153,132 @@ export const PROP_PRESETS: Record<string, PropPreset> = {
     specifications: { material: "Walnut & Steel" },
     clearance: { front: 600, sides: 300, back: 900 },
   },
+  coffee_table_rect: {
+    name: "Glass & Wood Coffee Table",
+    category: "living",
+    propType: "coffee_table",
+    dimensions: { width: 1200, depth: 600, height: 450 },
+    defaultColor: "#334155",
+    shape: "rectangular",
+    specifications: { material: "Tempered Glass" },
+    clearance: { front: 450, sides: 450, back: 450 },
+  },
+
+  // Kitchen Modular & Appliances
+  counter_straight_2400: {
+    name: "Modular Kitchen Platform (2.4m)",
+    category: "kitchen",
+    propType: "counter_straight",
+    dimensions: { width: 2400, depth: 600, height: 850 },
+    defaultColor: "#f1f5f9",
+    shape: "rectangular",
+    specifications: { layout: "straight" },
+    clearance: { front: 1000, sides: 100, back: 50 },
+  },
+  counter_l_2400: {
+    name: "L-Shaped Kitchen Platform",
+    category: "kitchen",
+    propType: "counter_l_shape",
+    dimensions: { width: 2400, depth: 1800, height: 850 },
+    defaultColor: "#f1f5f9",
+    shape: "l_shape",
+    specifications: { layout: "l_shape_left" },
+    clearance: { front: 1000, sides: 100, back: 50 },
+  },
+  hob_4burner: {
+    name: "4-Burner Glass Hob Cooktop",
+    category: "kitchen",
+    propType: "hob_cooktop",
+    dimensions: { width: 750, depth: 500, height: 60 },
+    defaultColor: "#090d16",
+    shape: "rectangular",
+    specifications: { burners: 4, ignition: "Auto" },
+    clearance: { front: 900, sides: 300, back: 50 },
+  },
+  sink_kitchen: {
+    name: "Double Bowl Kitchen Sink",
+    category: "kitchen",
+    propType: "sink",
+    dimensions: { width: 850, depth: 500, height: 220 },
+    defaultColor: "#f8fafc",
+    shape: "rectangular",
+    specifications: { bowls: 2, faucet: "Swivel" },
+    clearance: { front: 900, sides: 200, back: 50 },
+  },
+  refrigerator_french: {
+    name: "French Door Refrigerator (600L)",
+    category: "kitchen",
+    propType: "refrigerator",
+    dimensions: { width: 910, depth: 750, height: 1800 },
+    defaultColor: "#e2e8f0",
+    shape: "rectangular",
+    specifications: { capacityLiters: 600 },
+    clearance: { front: 900, sides: 100, back: 100 },
+  },
+
+  // Bathroom & Sanitaryware
+  toilet_wc: {
+    name: "Wall-Hung WC Commode",
+    category: "bathroom",
+    propType: "toilet",
+    dimensions: { width: 400, depth: 550, height: 400 },
+    defaultColor: "#ffffff",
+    shape: "rectangular",
+    specifications: { mount: "wall_hung", flush: "dual" },
+    clearance: { front: 600, sides: 250, back: 50 },
+  },
+  sink_vanity: {
+    name: "Vanity Basin Counter",
+    category: "bathroom",
+    propType: "sink",
+    dimensions: { width: 800, depth: 500, height: 850 },
+    defaultColor: "#f8fafc",
+    shape: "rectangular",
+    specifications: { type: "vanity" },
+    clearance: { front: 700, sides: 150, back: 50 },
+  },
+  shower_cubicle: {
+    name: "Glass Shower Enclosure",
+    category: "bathroom",
+    propType: "shower",
+    dimensions: { width: 900, depth: 900, height: 2000 },
+    defaultColor: "#f0fdf4",
+    shape: "rectangular",
+    specifications: { glassThicknessMm: 10 },
+    clearance: { front: 700, sides: 100, back: 50 },
+  },
+  bathtub_luxury: {
+    name: "Freestanding Soaking Bathtub",
+    category: "bathroom",
+    propType: "bathtub",
+    dimensions: { width: 1700, depth: 750, height: 600 },
+    defaultColor: "#ffffff",
+    shape: "rectangular",
+    specifications: { capacityLiters: 250 },
+    clearance: { front: 700, sides: 200, back: 50 },
+  },
+
+  // Parking & Automobile
+  car_sedan: {
+    name: "Executive Sedan Parking Bay",
+    category: "parking",
+    propType: "car_sedan",
+    dimensions: { width: 4700, depth: 1850, height: 1450 },
+    defaultColor: "#334155",
+    shape: "rectangular",
+    specifications: { bayType: "covered" },
+    clearance: { front: 500, sides: 600, back: 500 },
+  },
+  car_suv: {
+    name: "Large SUV / EV Parking Bay",
+    category: "parking",
+    propType: "car_suv",
+    dimensions: { width: 5000, depth: 2000, height: 1800 },
+    defaultColor: "#1e293b",
+    shape: "rectangular",
+    specifications: { evChargerReady: true },
+    clearance: { front: 600, sides: 700, back: 600 },
+  },
 };
 
 export interface PlacementPlan {
@@ -186,13 +312,19 @@ export function planAutonomousPlacement(
     // Intelligent auto-detection based on prop category
     const cat = preset.category;
     if (cat === "living" || cat === "entertainment") {
-      room = floor.rooms.find(r => r.name.toLowerCase().includes("living") || r.name.toLowerCase().includes("hall"));
+      room = floor.rooms.find(r => r.name.toLowerCase().includes("living") || r.name.toLowerCase().includes("hall") || r.name.toLowerCase().includes("lounge"));
     } else if (cat === "bedroom") {
       room = floor.rooms.find(r => r.name.toLowerCase().includes("bed"));
     } else if (cat === "dining") {
       room = floor.rooms.find(r => r.name.toLowerCase().includes("dining") || r.name.toLowerCase().includes("living"));
     } else if (cat === "office") {
       room = floor.rooms.find(r => r.name.toLowerCase().includes("study") || r.name.toLowerCase().includes("office") || r.name.toLowerCase().includes("bed"));
+    } else if (cat === "kitchen") {
+      room = floor.rooms.find(r => r.name.toLowerCase().includes("kitchen") || r.name.toLowerCase().includes("cooking") || r.name.toLowerCase().includes("pantry"));
+    } else if (cat === "bathroom") {
+      room = floor.rooms.find(r => r.name.toLowerCase().includes("bath") || r.name.toLowerCase().includes("toilet") || r.name.toLowerCase().includes("powder") || r.name.toLowerCase().includes("wash"));
+    } else if (cat === "parking") {
+      room = floor.rooms.find(r => r.name.toLowerCase().includes("park") || r.name.toLowerCase().includes("garage") || r.name.toLowerCase().includes("porch") || r.name.toLowerCase().includes("carport"));
     }
     if (!room) {
       room = floor.rooms[0];
@@ -287,6 +419,64 @@ export function planAutonomousPlacement(
     };
     rotation = 0;
     reasoning = `Fitted wardrobe flush into room corner to preserve open circulation.`;
+  } else if (preset.propType === "counter_straight" || preset.propType === "counter_l_shape") {
+    // Kitchen platform: against North/top wall
+    pos = {
+      x: minX + preset.dimensions.width / 2 + 100,
+      y: minY + preset.dimensions.depth / 2 + 100
+    };
+    rotation = 0;
+    reasoning = `Fitted modular kitchen counter platform along solid boundary wall with 1000mm chef clearance.`;
+  } else if (preset.propType === "hob_cooktop") {
+    pos = {
+      x: minX + roomW / 2,
+      y: minY + preset.dimensions.depth / 2 + 150
+    };
+    rotation = 0;
+    reasoning = `Positioned cooking hob cooktop with dedicated 900mm front clearance and exhaust ducting access.`;
+  } else if (preset.propType === "refrigerator") {
+    pos = {
+      x: maxX - preset.dimensions.width / 2 - 100,
+      y: minY + preset.dimensions.depth / 2 + 100
+    };
+    rotation = 0;
+    reasoning = `Corner positioned refrigerator with 100mm thermal heat-dissipation clearance.`;
+  } else if (preset.propType === "toilet") {
+    pos = {
+      x: minX + roomW / 2,
+      y: minY + preset.dimensions.depth / 2 + 60
+    };
+    rotation = 0;
+    reasoning = `Wall-hung WC commode mounted against wet service duct with 600mm front ergonomic clearance.`;
+  } else if (preset.propType === "shower") {
+    pos = {
+      x: maxX - preset.dimensions.width / 2 - 80,
+      y: maxY - preset.dimensions.depth / 2 - 80
+    };
+    rotation = 0;
+    reasoning = `Toughened glass shower enclosure positioned in dry/wet segregated corner.`;
+  } else if (preset.propType === "bathtub") {
+    pos = {
+      x: minX + preset.dimensions.width / 2 + 100,
+      y: maxY - preset.dimensions.depth / 2 - 100
+    };
+    rotation = 0;
+    reasoning = `Freestanding soaking tub positioned with dedicated plumbing access.`;
+  } else if (preset.propType === "car_sedan" || preset.propType === "car_suv") {
+    pos = { x: centroid.x, y: centroid.y };
+    rotation = roomW < roomH ? 0 : 90;
+    reasoning = `Parked vehicle aligned with drive-in apron and 600mm door swing clearance.`;
+  } else if (preset.propType === "coffee_table") {
+    const sofa = existingProps.find(p => p.propType === "sofa");
+    if (sofa) {
+      pos = { x: sofa.position.x, y: sofa.position.y - 650 };
+      rotation = 0;
+      reasoning = `Centered coffee table 450mm from sofa for convenient reach without obstructing passage.`;
+    } else {
+      pos = { x: centroid.x, y: centroid.y };
+      rotation = 0;
+      reasoning = `Centered coffee table in seating zone.`;
+    }
   } else {
     pos = { x: centroid.x, y: centroid.y };
     rotation = 0;

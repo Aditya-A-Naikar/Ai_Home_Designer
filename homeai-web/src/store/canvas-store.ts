@@ -3,10 +3,10 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import { Point2D, Door } from '@/core/domain/types';
 
-export type ToolType = 'select' | 'wall' | 'room' | 'door' | 'window' | 'prop' | 'pan';
+export type ToolType = 'select' | 'wall' | 'room' | 'door' | 'window' | 'prop' | 'stair' | 'column' | 'pan';
 
 export interface SubElementSelection {
-  type: 'wall' | 'room' | 'door' | 'window' | 'prop';
+  type: 'wall' | 'room' | 'door' | 'window' | 'prop' | 'stair' | 'column' | 'void';
   id: string;
   parentWallId?: string;
 }
@@ -29,6 +29,7 @@ interface CanvasState {
 
   // View settings
   showAllDimensions: boolean;
+  showUnderlay: boolean;
   leftSidebarOpen: boolean;
   aiAdvisorOpen: boolean;
 
@@ -55,6 +56,7 @@ interface CanvasActions {
   toggleOrthoMode: () => void;
   setGridSize: (size: number) => void;
   toggleShowAllDimensions: () => void;
+  toggleShowUnderlay: () => void;
   toggleLeftSidebar: () => void;
   setLeftSidebarOpen: (open: boolean) => void;
   toggleAIAdvisor: () => void;
@@ -86,6 +88,7 @@ export const useCanvasStore = create<CanvasStore>()(
       gridSize: 100,
 
       showAllDimensions: false,
+      showUnderlay: true,
       leftSidebarOpen: true,
       aiAdvisorOpen: true,
 
@@ -124,6 +127,7 @@ export const useCanvasStore = create<CanvasStore>()(
       toggleOrthoMode: () => set((state) => { state.orthoMode = !state.orthoMode; }),
       setGridSize: (size) => set((state) => { state.gridSize = size; }),
       toggleShowAllDimensions: () => set((state) => { state.showAllDimensions = !state.showAllDimensions; }),
+      toggleShowUnderlay: () => set((state) => { state.showUnderlay = !state.showUnderlay; }),
       toggleLeftSidebar: () => set((state) => { state.leftSidebarOpen = !state.leftSidebarOpen; }),
       setLeftSidebarOpen: (open) => set((state) => { state.leftSidebarOpen = open; }),
       toggleAIAdvisor: () => set((state) => { state.aiAdvisorOpen = !state.aiAdvisorOpen; }),
@@ -145,6 +149,7 @@ export const useCanvasStore = create<CanvasStore>()(
         orthoMode: state.orthoMode,
         gridSize: state.gridSize,
         showAllDimensions: state.showAllDimensions,
+        showUnderlay: state.showUnderlay,
       }),
     }
   )
