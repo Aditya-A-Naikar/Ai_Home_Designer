@@ -1,6 +1,5 @@
 import { Point2D, Wall, Room } from "../domain/types";
 import { Vector2D } from "./vector";
-import { v4 as uuidv4 } from "uuid";
 
 export function polygonArea(polygon: Point2D[]): number {
   if (polygon.length < 3) return 0;
@@ -65,11 +64,8 @@ export function polygonPerimeter(polygon: Point2D[]): number {
   return perimeter;
 }
 
-// Very basic room detection stub based on bounding box constraints.
-// A true room detection requires a planar graph finding cycles.
-export function autoDetectRooms(walls: Wall[], floorId: string): Room[] {
-  // Advanced planar graph extraction is beyond simple logic here. 
-  // We'll just return an empty array or simulate a room if it looks like a box.
-  // In a real app, you'd use a Half-Edge data structure to find faces.
+// Stub: returns empty array. Phase 4+ will use planar graph (Half-Edge) cycle detection.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function autoDetectRooms(_walls: Wall[], _floorId: string): Room[] {
   return [];
 }

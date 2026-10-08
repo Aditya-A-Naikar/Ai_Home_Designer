@@ -28,7 +28,7 @@ export function useAIAdvisor(projectId: string) {
       const res = await fetch('/api/ai/advise', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userMessage: content, projectContext })
+        body: JSON.stringify({ userMessage: content, projectContext, projectId })
       });
       
       const data = await res.json();

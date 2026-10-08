@@ -1,6 +1,6 @@
 import React from 'react';
 import { Point2D } from '@/core/domain/types';
-import { getViewBounds, mmToScreen } from '@/core/canvas/transform';
+import { getViewBounds } from '@/core/canvas/transform';
 
 interface GridLayerProps {
   canvasWidth: number;

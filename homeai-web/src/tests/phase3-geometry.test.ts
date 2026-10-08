@@ -35,6 +35,9 @@ describe('Wall Utils', () => {
   it('snaps to grid', () => {
     expect(snapToGrid({ x: 145, y: 155 }, 100)).toEqual({ x: 100, y: 200 });
   });
+  it('calculates wall angle', () => {
+    expect(wallAngle(wall)).toBe(0);
+  });
 });
 
 describe('Room Utils', () => {
@@ -70,5 +73,14 @@ describe('Transform Engine', () => {
   it('converts screen to mm', () => {
     const mmPt = screenToMm({ x: 600, y: 1100 }, 0.5, { x: 100, y: 100 });
     expect(mmPt).toEqual({ x: 1000, y: 2000 });
+  });
+
+  it('fits content to screen viewport', () => {
+    const walls: Wall[] = [
+      { id: 'w1', floorId: 'f1', start: { x: 0, y: 0 }, end: { x: 1000, y: 0 }, thickness: 150, doors: [], windows: [] }
+    ];
+    const fit = fitToContent(walls, 800, 600, 50);
+    expect(fit.zoom).toBeGreaterThan(0);
+    expect(fit.panOffset).toBeDefined();
   });
 });

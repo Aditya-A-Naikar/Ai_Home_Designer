@@ -6,7 +6,7 @@ import { Layers, Plus, Trash2 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 export function FloorManager() {
-  const { currentProject, addFloor, deleteFloor, updateFloor } = useProjectStore();
+  const { currentProject, addFloor, deleteFloor } = useProjectStore();
   
   if (!currentProject) return null;
 

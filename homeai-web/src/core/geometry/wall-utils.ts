@@ -1,4 +1,4 @@
-import { Point2D, Wall, Door, Window } from "../domain/types";
+import { Point2D, Wall } from "../domain/types";
 import { Vector2D } from "./vector";
 
 export function wallLength(wall: Wall): number {

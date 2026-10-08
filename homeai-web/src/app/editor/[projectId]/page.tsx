@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { useProjectStore } from '@/store/project-store';
 import { CanvasToolbar } from '@/features/canvas/components/canvas-toolbar';
@@ -12,7 +12,7 @@ import { useCanvasStore } from '@/store/canvas-store';
 export default function EditorPage() {
   const params = useParams();
   const projectId = params.projectId as string;
-  const { loadProject, isLoading, error, currentProject, undo, redo, saveProject, isSaving } = useProjectStore();
+  const { loadProject, isLoading, error, currentProject, undo, redo, saveProject } = useProjectStore();
   const { setTool } = useCanvasStore();
 
   useEffect(() => {

@@ -16,7 +16,6 @@ export function WallLayer({ walls, zoom, selectedElementId, onSelect }: WallLaye
         const isSelected = wall.id === selectedElementId;
         const strokeColor = isSelected ? '#4f46e5' : '#334155'; // indigo-600 or slate-700
         const v = Vector2D.fromPoints(wall.start, wall.end);
-        const len = v.length();
         const angle = Math.atan2(v.y, v.x) * (180 / Math.PI);
         
         return (
