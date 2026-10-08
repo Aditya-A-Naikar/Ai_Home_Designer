@@ -97,6 +97,14 @@ export function CanvasViewport() {
   // Snap feedback indicator
   const [snapFeedback, setSnapFeedback] = useState<SnapFeedback | null>(null);
 
+  // Prop dragging state
+  const [draggingProp, setDraggingProp] = useState<{
+    propId: string;
+    startPointerMm: Point2D;
+    initialPropPos: Point2D;
+    hasMoved: boolean;
+  } | null>(null);
+
   useEffect(() => {
     if (!containerRef.current) return;
     const observer = new ResizeObserver((entries) => {
@@ -240,6 +248,26 @@ export function CanvasViewport() {
     return { point: pt, feedback };
   }, [enableOrthoMode, enableSnapEndpoints, enableSnapGrid, gridSize, walls, zoom]);
 
+  const handlePropPointerDown = (propId: string, e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+
+    const activeFloor = currentProject?.floors.find(f => f.id === currentProject.activeFloorId);
+    const prop = activeFloor?.props?.find(p => p.id === propId);
+    if (!prop) return;
+
+    selectSubElement({ type: 'prop', id: propId });
+    selectElement(null);
+
+    const pointerMm = getPointerMm(e);
+    setDraggingProp({
+      propId,
+      startPointerMm: pointerMm,
+      initialPropPos: { ...prop.position },
+      hasMoved: false,
+    });
+  };
+
   const handlePointerDown = (e: React.PointerEvent) => {
     // Middle click, space key, alt key, or pan tool
     if (e.button === 1 || spacePressed || tool === 'pan' || (e.button === 0 && e.altKey)) {
@@ -329,6 +357,33 @@ export function CanvasViewport() {
 
     const rawPt = getPointerMm(e);
 
+    // Prop dragging
+    if (draggingProp && currentProject) {
+      const activeFloor = currentProject.floors.find(f => f.id === currentProject.activeFloorId);
+      if (activeFloor) {
+        const dx = rawPt.x - draggingProp.startPointerMm.x;
+        const dy = rawPt.y - draggingProp.startPointerMm.y;
+
+        let targetX = draggingProp.initialPropPos.x + dx;
+        let targetY = draggingProp.initialPropPos.y + dy;
+
+        // Snapping to grid if enabled
+        if (enableSnapGrid) {
+          targetX = Math.round(targetX / gridSize) * gridSize;
+          targetY = Math.round(targetY / gridSize) * gridSize;
+        }
+
+        updateProp(activeFloor.id, draggingProp.propId, (p) => {
+          p.position = { x: Math.round(targetX), y: Math.round(targetY) };
+        });
+
+        if (!draggingProp.hasMoved) {
+          setDraggingProp(prev => prev ? { ...prev, hasMoved: true } : null);
+        }
+      }
+      return;
+    }
+
     // Wall drawing preview
     if (tool === 'wall' && drawingWall) {
       const { point: pt, feedback } = applySnapping(rawPt, drawingWall.start, e.shiftKey);
@@ -396,6 +451,11 @@ export function CanvasViewport() {
       setIsPanning(false);
       setPanStart(null);
       e.currentTarget.releasePointerCapture(e.pointerId);
+      return;
+    }
+
+    if (draggingProp) {
+      setDraggingProp(null);
       return;
     }
 
@@ -546,6 +606,7 @@ export function CanvasViewport() {
             onSelectProp={(propId) => {
               selectSubElement({ type: 'prop', id: propId });
             }}
+            onPropPointerDown={handlePropPointerDown}
             onDeleteProp={(propId) => {
               if (activeFloor) {
                 deleteProp(activeFloor.id, propId);
@@ -559,6 +620,8 @@ export function CanvasViewport() {
                 });
               }
             }}
+            isDraggingProp={!!draggingProp}
+            draggingPropId={draggingProp?.propId}
           />
 
           {/* Room Polygon In-Progress Drawing */}

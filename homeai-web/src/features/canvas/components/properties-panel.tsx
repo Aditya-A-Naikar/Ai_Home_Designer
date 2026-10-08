@@ -17,6 +17,8 @@ import {
   Info, 
   Armchair, 
   RotateCw, 
+  RotateCcw,
+  ChevronLeft,
   MousePointer2, 
   Move, 
   Sparkles 
@@ -29,7 +31,8 @@ export function PropertiesPanel() {
     selectElement, 
     selectSubElement,
     tool,
-    setTool 
+    setTool,
+    setLeftSidebarOpen 
   } = useCanvasStore();
   const { 
     currentProject, 
@@ -98,6 +101,18 @@ export function PropertiesPanel() {
 
   return (
     <div className="w-80 border-r bg-white flex flex-col h-full overflow-y-auto shrink-0 select-none">
+      {/* Header bar with collapse button */}
+      <div className="h-10 px-3 border-b bg-slate-50 flex items-center justify-between shrink-0">
+        <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">CAD Workspace</span>
+        <button
+          onClick={() => setLeftSidebarOpen(false)}
+          className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
+          title="Collapse Left Sidebar"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+      </div>
+
       <FloorManager />
 
       {/* CAD DESIGN TOOLS PALETTE */}
@@ -363,15 +378,113 @@ export function PropertiesPanel() {
                 </div>
               </div>
 
-              {/* Rotate button */}
+              {/* Exact Position (X & Y) in Millimeters */}
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <label className="text-[11px] text-slate-500 font-medium block mb-1">Position X (mm)</label>
+                  <input
+                    type="number"
+                    step={100}
+                    value={Math.round(selectedProp.position.x)}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      if (!isNaN(val)) {
+                        updateProp(floor.id, selectedProp.id, (p) => { p.position.x = val; });
+                      }
+                    }}
+                    className="w-full px-2 py-1.5 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-500 font-medium block mb-1">Position Y (mm)</label>
+                  <input
+                    type="number"
+                    step={100}
+                    value={Math.round(selectedProp.position.y)}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      if (!isNaN(val)) {
+                        updateProp(floor.id, selectedProp.id, (p) => { p.position.y = val; });
+                      }
+                    }}
+                    className="w-full px-2 py-1.5 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Interactive Nudge / Move D-Pad */}
+              <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] font-semibold text-slate-700 flex items-center gap-1">
+                    <Move className="h-3.5 w-3.5 text-indigo-600" /> Move & Nudge Prop
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono">100mm steps</span>
+                </div>
+                <div className="flex flex-col items-center gap-1">
+                  <button
+                    onClick={() => updateProp(floor.id, selectedProp.id, (p) => { p.position.y -= 100; })}
+                    className="h-6 w-16 bg-white border border-slate-200 rounded hover:bg-indigo-50 hover:border-indigo-300 text-slate-700 flex items-center justify-center text-[11px] font-bold transition-colors cursor-pointer shadow-2xs"
+                    title="Move Up 100mm"
+                  >
+                    ▲
+                  </button>
+                  <div className="flex gap-1.5">
+                    <button
+                      onClick={() => updateProp(floor.id, selectedProp.id, (p) => { p.position.x -= 100; })}
+                      className="h-6 w-16 bg-white border border-slate-200 rounded hover:bg-indigo-50 hover:border-indigo-300 text-slate-700 flex items-center justify-center text-[11px] font-bold transition-colors cursor-pointer shadow-2xs"
+                      title="Move Left 100mm"
+                    >
+                      ◀
+                    </button>
+                    <button
+                      onClick={() => updateProp(floor.id, selectedProp.id, (p) => { p.position.x += 100; })}
+                      className="h-6 w-16 bg-white border border-slate-200 rounded hover:bg-indigo-50 hover:border-indigo-300 text-slate-700 flex items-center justify-center text-[11px] font-bold transition-colors cursor-pointer shadow-2xs"
+                      title="Move Right 100mm"
+                    >
+                      ▶
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => updateProp(floor.id, selectedProp.id, (p) => { p.position.y += 100; })}
+                    className="h-6 w-16 bg-white border border-slate-200 rounded hover:bg-indigo-50 hover:border-indigo-300 text-slate-700 flex items-center justify-center text-[11px] font-bold transition-colors cursor-pointer shadow-2xs"
+                    title="Move Down 100mm"
+                  >
+                    ▼
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400 text-center mt-1.5">
+                  Or drag directly on canvas with your mouse!
+                </p>
+              </div>
+
+              {/* Rotation Controls (-90, +90, 180) */}
               <div>
-                <button
-                  onClick={() => updateProp(floor.id, selectedProp.id, (p) => { p.rotation = ((p.rotation || 0) + 90) % 360; })}
-                  className="w-full py-1.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-md flex items-center justify-center gap-1.5 transition-colors border border-slate-200"
-                >
-                  <RotateCw className="h-3.5 w-3.5 text-indigo-600" />
-                  <span>Rotate 90° Clockwise</span>
-                </button>
+                <label className="text-[11px] text-slate-500 font-medium block mb-1">Rotation Angle</label>
+                <div className="grid grid-cols-3 gap-1">
+                  <button
+                    onClick={() => updateProp(floor.id, selectedProp.id, (p) => { p.rotation = ((p.rotation || 0) + 270) % 360; })}
+                    className="py-1.5 px-2 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium text-xs rounded border border-slate-200 flex items-center justify-center gap-1 cursor-pointer"
+                    title="Rotate 90° Counter-Clockwise"
+                  >
+                    <RotateCcw className="h-3 w-3 text-indigo-600" />
+                    <span>-90°</span>
+                  </button>
+                  <button
+                    onClick={() => updateProp(floor.id, selectedProp.id, (p) => { p.rotation = ((p.rotation || 0) + 90) % 360; })}
+                    className="py-1.5 px-2 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium text-xs rounded border border-slate-200 flex items-center justify-center gap-1 cursor-pointer"
+                    title="Rotate 90° Clockwise"
+                  >
+                    <RotateCw className="h-3 w-3 text-indigo-600" />
+                    <span>+90°</span>
+                  </button>
+                  <button
+                    onClick={() => updateProp(floor.id, selectedProp.id, (p) => { p.rotation = ((p.rotation || 0) + 180) % 360; })}
+                    className="py-1.5 px-2 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium text-xs rounded border border-slate-200 flex items-center justify-center gap-1 cursor-pointer"
+                    title="Flip 180°"
+                  >
+                    <span>180°</span>
+                  </button>
+                </div>
               </div>
 
               {/* Specifications list */}

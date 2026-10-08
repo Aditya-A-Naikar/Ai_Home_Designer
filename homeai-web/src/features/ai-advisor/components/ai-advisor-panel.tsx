@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAIAdvisor } from '../hooks/use-ai-advisor';
 import { useProjectStore } from '@/store/project-store';
+import { useCanvasStore } from '@/store/canvas-store';
 import { Send, Bot, User, CheckCircle2, ChevronRight, Sparkles, ShieldAlert, Sun, Compass, Ruler, Tv, BedDouble, LayoutGrid } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -10,19 +11,19 @@ import { Badge } from '@/components/ui/badge';
 export function AIAdvisorPanel() {
   const { currentProject } = useProjectStore();
   const { messages, isLoading, sendMessage, applySuggestion } = useAIAdvisor(currentProject?.id || '');
+  const { aiAdvisorOpen, setAIAdvisorOpen } = useCanvasStore();
   const [input, setInput] = useState('');
-  const [isOpen, setIsOpen] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
-  if (!isOpen) {
+  if (!aiAdvisorOpen) {
     return (
       <button 
-        onClick={() => setIsOpen(true)}
-        className="absolute top-20 right-0 bg-white border border-r-0 border-slate-200 p-2.5 rounded-l-lg shadow-md text-indigo-600 hover:bg-indigo-50 z-20 flex items-center gap-1.5 font-medium text-xs"
+        onClick={() => setAIAdvisorOpen(true)}
+        className="absolute top-16 right-0 bg-white border border-r-0 border-slate-200 p-2.5 rounded-l-xl shadow-md text-indigo-600 hover:bg-indigo-50 z-20 flex items-center gap-1.5 font-medium text-xs cursor-pointer transition-all hover:pr-3.5"
         title="Open AI Architectural Advisor"
       >
         <Bot className="h-5 w-5" />
@@ -71,8 +72,8 @@ export function AIAdvisorPanel() {
           </div>
         </div>
         <button 
-          onClick={() => setIsOpen(false)} 
-          className="text-slate-400 hover:text-slate-600 p-1 rounded-md hover:bg-slate-200 transition-colors"
+          onClick={() => setAIAdvisorOpen(false)} 
+          className="text-slate-400 hover:text-slate-600 p-1 rounded-md hover:bg-slate-200 transition-colors cursor-pointer"
           title="Minimize Co-Pilot"
         >
           <ChevronRight className="h-4 w-4" />

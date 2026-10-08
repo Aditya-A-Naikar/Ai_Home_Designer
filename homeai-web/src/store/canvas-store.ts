@@ -29,6 +29,8 @@ interface CanvasState {
 
   // View settings
   showAllDimensions: boolean;
+  leftSidebarOpen: boolean;
+  aiAdvisorOpen: boolean;
 
   // Placement parameters
   doorWidth: number;
@@ -53,6 +55,10 @@ interface CanvasActions {
   toggleOrthoMode: () => void;
   setGridSize: (size: number) => void;
   toggleShowAllDimensions: () => void;
+  toggleLeftSidebar: () => void;
+  setLeftSidebarOpen: (open: boolean) => void;
+  toggleAIAdvisor: () => void;
+  setAIAdvisorOpen: (open: boolean) => void;
 
   setDoorWidth: (width: number) => void;
   setDoorSwing: (swing: Door['swingDirection']) => void;
@@ -80,6 +86,8 @@ export const useCanvasStore = create<CanvasStore>()(
       gridSize: 100,
 
       showAllDimensions: false,
+      leftSidebarOpen: true,
+      aiAdvisorOpen: true,
 
       doorWidth: 900,
       doorSwing: 'inward_right',
@@ -116,6 +124,10 @@ export const useCanvasStore = create<CanvasStore>()(
       toggleOrthoMode: () => set((state) => { state.orthoMode = !state.orthoMode; }),
       setGridSize: (size) => set((state) => { state.gridSize = size; }),
       toggleShowAllDimensions: () => set((state) => { state.showAllDimensions = !state.showAllDimensions; }),
+      toggleLeftSidebar: () => set((state) => { state.leftSidebarOpen = !state.leftSidebarOpen; }),
+      setLeftSidebarOpen: (open) => set((state) => { state.leftSidebarOpen = open; }),
+      toggleAIAdvisor: () => set((state) => { state.aiAdvisorOpen = !state.aiAdvisorOpen; }),
+      setAIAdvisorOpen: (open) => set((state) => { state.aiAdvisorOpen = open; }),
 
       setDoorWidth: (w) => set((state) => { state.doorWidth = w; }),
       setDoorSwing: (s) => set((state) => { state.doorSwing = s; }),

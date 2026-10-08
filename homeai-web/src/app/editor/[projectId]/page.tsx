@@ -8,14 +8,20 @@ import { PropertiesPanel } from '@/features/canvas/components/properties-panel';
 import { CanvasViewport } from '@/features/canvas/components/canvas-viewport';
 import { AIAdvisorPanel } from '@/features/ai-advisor/components/ai-advisor-panel';
 import { useCanvasStore } from '@/store/canvas-store';
+import { PanelLeft } from 'lucide-react';
 
 export default function EditorPage() {
   const params = useParams();
   const projectId = params.projectId as string;
   const { loadProject, isLoading, error, currentProject, undo, redo, saveProject } = useProjectStore();
-  const { setTool, selectElement, selectSubElement } = useCanvasStore();
-
-  const { isModified } = useCanvasStore();
+  const { 
+    setTool, 
+    selectElement, 
+    selectSubElement, 
+    isModified,
+    leftSidebarOpen,
+    setLeftSidebarOpen 
+  } = useCanvasStore();
 
   useEffect(() => {
     if (projectId) {
@@ -87,8 +93,18 @@ export default function EditorPage() {
   return (
     <div className="flex flex-col h-full w-full bg-slate-50 overflow-hidden select-none">
       <CanvasToolbar />
-      <div className="flex flex-1 min-h-0 w-full overflow-hidden">
-        <PropertiesPanel />
+      <div className="flex flex-1 min-h-0 w-full overflow-hidden relative">
+        {leftSidebarOpen && <PropertiesPanel />}
+        {!leftSidebarOpen && (
+          <button
+            onClick={() => setLeftSidebarOpen(true)}
+            className="absolute top-4 left-4 z-30 bg-white/95 backdrop-blur-sm border border-slate-200 px-3 py-1.5 rounded-lg shadow-md hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all hover:scale-105"
+            title="Open Tools & Properties Sidebar"
+          >
+            <PanelLeft className="h-4 w-4 text-indigo-600" />
+            <span>Tools & Floors</span>
+          </button>
+        )}
         <div className="flex-1 relative min-w-0 h-full overflow-hidden">
           <CanvasViewport />
         </div>

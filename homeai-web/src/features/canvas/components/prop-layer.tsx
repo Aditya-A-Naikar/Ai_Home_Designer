@@ -7,8 +7,11 @@ interface PropLayerProps {
   zoom: number;
   selectedSubElement: SubElementSelection | null;
   onSelectProp: (propId: string) => void;
+  onPropPointerDown?: (propId: string, e: React.PointerEvent) => void;
   onDeleteProp?: (propId: string) => void;
   onRotateProp?: (propId: string) => void;
+  isDraggingProp?: boolean;
+  draggingPropId?: string | null;
 }
 
 export function PropLayer({
@@ -16,8 +19,11 @@ export function PropLayer({
   zoom,
   selectedSubElement,
   onSelectProp,
+  onPropPointerDown,
   onDeleteProp,
-  onRotateProp
+  onRotateProp,
+  isDraggingProp,
+  draggingPropId
 }: PropLayerProps) {
   if (!props || props.length === 0) return null;
 
@@ -25,6 +31,7 @@ export function PropLayer({
     <g className="props-layer">
       {props.map((prop) => {
         const isSelected = selectedSubElement?.type === 'prop' && selectedSubElement.id === prop.id;
+        const isCurrentlyDragging = isDraggingProp && draggingPropId === prop.id;
         const w = prop.dimensions.width;
         const d = prop.dimensions.depth;
         const halfW = w / 2;
@@ -36,11 +43,22 @@ export function PropLayer({
           <g
             key={prop.id}
             transform={`translate(${prop.position.x}, ${prop.position.y}) rotate(${angle})`}
+            onPointerDown={(e) => {
+              if (onPropPointerDown) {
+                onPropPointerDown(prop.id, e);
+              }
+            }}
             onClick={(e) => {
               e.stopPropagation();
               onSelectProp(prop.id);
             }}
-            style={{ cursor: 'pointer' }}
+            style={{ 
+              cursor: isCurrentlyDragging 
+                ? 'grabbing' 
+                : isSelected 
+                  ? 'grab' 
+                  : 'pointer' 
+            }}
           >
             {/* Selection Bounding Halo */}
             {isSelected && (
@@ -324,37 +342,72 @@ export function PropLayer({
               </g>
             )}
 
-            {/* Selected Quick Action Buttons: Rotate & Delete */}
+            {/* Selected Quick Action Buttons: Move, Rotate & Delete */}
             {isSelected && (
-              <g transform={`translate(${halfW + 40}, ${-halfD}) scale(${1 / zoom})`}>
-                {/* Rotate button */}
-                {onRotateProp && (
-                  <g
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRotateProp(prop.id);
-                    }}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <circle cx={0} cy={0} r={14} fill="#4f46e5" stroke="#ffffff" strokeWidth={2} />
-                    <text x={0} y={4} textAnchor="middle" fill="#ffffff" fontSize={12} fontWeight="bold">↻</text>
+              <>
+                {/* Live coordinate badge during drag */}
+                {isCurrentlyDragging && (
+                  <g transform={`scale(${1 / zoom})`} pointerEvents="none">
+                    <rect x={-55} y={halfD * zoom + 18} width={110} height={22} rx={6} fill="#0f172a" fillOpacity={0.92} />
+                    <text x={0} y={halfD * zoom + 33} textAnchor="middle" fill="#38bdf8" fontSize={10} fontWeight="bold">
+                      {Math.round(prop.position.x)}, {Math.round(prop.position.y)} mm
+                    </text>
                   </g>
                 )}
-                {/* Delete button */}
-                {onDeleteProp && (
+
+                <g transform={`translate(${halfW + 40}, ${-halfD}) scale(${1 / zoom})`}>
+                  {/* Move Handle (Drag to Move) */}
                   <g
-                    transform="translate(0, 34)"
-                    onClick={(e) => {
+                    onPointerDown={(e) => {
                       e.stopPropagation();
-                      onDeleteProp(prop.id);
+                      if (onPropPointerDown) onPropPointerDown(prop.id, e);
                     }}
-                    style={{ cursor: 'pointer' }}
+                    style={{ cursor: isCurrentlyDragging ? 'grabbing' : 'grab' }}
                   >
-                    <circle cx={0} cy={0} r={14} fill="#ef4444" stroke="#ffffff" strokeWidth={2} />
-                    <text x={0} y={4} textAnchor="middle" fill="#ffffff" fontSize={12} fontWeight="bold">✕</text>
+                    <circle cx={0} cy={-34} r={14} fill="#2563eb" stroke="#ffffff" strokeWidth={2} />
+                    {/* 4-way arrow path */}
+                    <path
+                      d="M-6 -34 L6 -34 M0 -40 L0 -28 M-3 -37 L0 -40 L3 -37 M-3 -31 L0 -28 L3 -31 M-6 -34 L-3 -37 M-6 -34 L-3 -31 M6 -34 L3 -37 M6 -34 L3 -31"
+                      stroke="#ffffff"
+                      strokeWidth={1.5}
+                      fill="none"
+                      strokeLinecap="round"
+                    />
+                    <title>Drag to move prop anywhere</title>
                   </g>
-                )}
-              </g>
+
+                  {/* Rotate button */}
+                  {onRotateProp && (
+                    <g
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRotateProp(prop.id);
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <circle cx={0} cy={0} r={14} fill="#4f46e5" stroke="#ffffff" strokeWidth={2} />
+                      <text x={0} y={4} textAnchor="middle" fill="#ffffff" fontSize={12} fontWeight="bold">↻</text>
+                      <title>Rotate 90° Clockwise</title>
+                    </g>
+                  )}
+
+                  {/* Delete button */}
+                  {onDeleteProp && (
+                    <g
+                      transform="translate(0, 34)"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteProp(prop.id);
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <circle cx={0} cy={0} r={14} fill="#ef4444" stroke="#ffffff" strokeWidth={2} />
+                      <text x={0} y={4} textAnchor="middle" fill="#ffffff" fontSize={12} fontWeight="bold">✕</text>
+                      <title>Delete Prop</title>
+                    </g>
+                  )}
+                </g>
+              </>
             )}
           </g>
         );
