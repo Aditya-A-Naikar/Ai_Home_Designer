@@ -1,8 +1,14 @@
+import { PlanGenerationAction } from "@/core/ai/plan-generator";
+import { ActionPayload, AuditCategory, AuditSeverity } from "@/core/ai/architect-rules";
+
 export interface AISuggestion {
   id: string;
   title: string;
   description: string;
-  affectedElements: string[]; // IDs of walls/rooms affected
+  category?: AuditCategory;
+  severity?: AuditSeverity;
+  affectedElements?: string[];
+  action?: ActionPayload;
   applied: boolean;
 }
 
@@ -12,4 +18,10 @@ export interface AIMessage {
   content: string;
   timestamp: string; // ISO
   suggestions?: AISuggestion[];
+  actions?: PlanGenerationAction[];
+  placementSummary?: {
+    propsAdded: number;
+    roomsAffected: string[];
+    viewingDistanceM?: number;
+  };
 }

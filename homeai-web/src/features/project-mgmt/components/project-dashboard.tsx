@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
-import { Plus, Search, Sparkles, FolderOpen } from "lucide-react";
+import { Plus, Search, Sparkles, FolderOpen, Upload, Home } from "lucide-react";
 import { Project } from "@/core/domain/types";
 import { projectRepository } from "@/infrastructure/persistence/local-storage-project-repository";
 import { getMyHomeProject } from "@/core/domain/demo-project";
+import { parseProjectJson } from "@/core/export/json-exporter";
 import { ProjectCard } from "./project-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Home } from "lucide-react";
 
 export function ProjectDashboard() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -63,6 +63,8 @@ export function ProjectDashboard() {
     }
   };
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const handleLoadMyHome = async () => {
     try {
       const myHome = getMyHomeProject();
@@ -71,6 +73,26 @@ export function ProjectDashboard() {
     } catch (err) {
       console.error("Failed to load My Home:", err);
     }
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const content = event.target?.result as string;
+      const parseResult = parseProjectJson(content);
+      if (parseResult.success && parseResult.project) {
+        await projectRepository.save(parseResult.project);
+        await loadProjects();
+        alert(`Successfully imported: "${parseResult.project.name}"`);
+      } else {
+        alert(`Failed to import project: ${parseResult.error || "Invalid file"}`);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
   };
 
   const filteredProjects = projects.filter((p) =>
@@ -99,6 +121,17 @@ export function ProjectDashboard() {
             <Sparkles className="h-4 w-4 text-amber-600" />
             Sample Villa
           </Button>
+          <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="border-emerald-200 bg-emerald-50/50 text-emerald-700 hover:bg-emerald-100">
+            <Upload className="h-4 w-4 text-emerald-600" />
+            Import (.json)
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,.homeai.json"
+            onChange={handleImportFile}
+            className="hidden"
+          />
           <Button size="sm" asChild>
             <Link href="/projects/new">
               <Plus className="h-4 w-4" />

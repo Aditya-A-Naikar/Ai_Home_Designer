@@ -85,6 +85,44 @@ export const RoomSchema = z.object({
   targetArea: z.number().positive().optional(),
 });
 
+export const PropSchema = z.object({
+  id: z.string(),
+  floorId: z.string(),
+  roomId: z.string().optional(),
+  name: z.string().min(1),
+  category: z.enum([
+    "living",
+    "bedroom",
+    "dining",
+    "entertainment",
+    "kitchen",
+    "bathroom",
+    "office",
+  ]),
+  propType: z.enum([
+    "tv",
+    "sofa",
+    "bed",
+    "dining_table",
+    "wardrobe",
+    "desk",
+    "coffee_table",
+    "toilet",
+    "shower",
+    "sink",
+  ]),
+  position: Point2DSchema,
+  rotation: z.number().default(0),
+  dimensions: z.object({
+    width: z.number().positive(),
+    depth: z.number().positive(),
+    height: z.number().positive().optional(),
+  }),
+  color: z.string().optional(),
+  shape: z.enum(["rectangular", "l_shape", "curved", "round"]).optional(),
+  specifications: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
+});
+
 export const FloorSchema = z.object({
   id: z.string(),
   projectId: z.string(),
@@ -94,6 +132,7 @@ export const FloorSchema = z.object({
   height: z.number().positive().default(2800),
   walls: z.array(WallSchema).default([]),
   rooms: z.array(RoomSchema).default([]),
+  props: z.array(PropSchema).default([]),
 });
 
 export const ProjectSchema = z.object({

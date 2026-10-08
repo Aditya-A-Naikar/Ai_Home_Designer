@@ -22,10 +22,17 @@ import {
   Ruler,
   Sparkles,
   CheckCircle2,
-  RotateCcw
+  RotateCcw,
+  Download,
+  Upload,
+  FileCode,
+  Armchair
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { fitToContent } from '@/core/canvas/transform';
+import { downloadProjectJson, parseProjectJson } from '@/core/export/json-exporter';
+import { downloadFloorSvg } from '@/core/export/svg-blueprint-exporter';
+import { PropsCatalogModal } from './props-catalog-modal';
 
 export function CanvasToolbar() {
   const { 
@@ -53,8 +60,41 @@ export function CanvasToolbar() {
     future, 
     saveProject, 
     isSaving,
-    detectAndAddRooms
+    detectAndAddRooms,
+    importProject
   } = useProjectStore();
+
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [isCatalogOpen, setIsCatalogOpen] = React.useState(false);
+
+  const handleExportJson = () => {
+    if (!currentProject) return;
+    downloadProjectJson(currentProject);
+  };
+
+  const handleExportSvg = () => {
+    if (!currentProject) return;
+    downloadFloorSvg(currentProject, currentProject.activeFloorId);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const content = event.target?.result as string;
+      const parseResult = parseProjectJson(content);
+      if (parseResult.success && parseResult.project) {
+        await importProject(parseResult.project);
+        alert(`Successfully imported project: "${parseResult.project.name}"`);
+      } else {
+        alert(`Failed to import project: ${parseResult.error || 'Unknown error'}`);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
 
   const handleFit = () => {
     if (!currentProject) return;
@@ -119,6 +159,16 @@ export function CanvasToolbar() {
         >
           <Sparkles className="h-3.5 w-3.5 text-amber-600" />
           <span className="hidden md:inline">Auto-Rooms</span>
+        </button>
+
+        {/* Accessories & Props Catalog Button */}
+        <button
+          onClick={() => setIsCatalogOpen(true)}
+          className="flex items-center space-x-1.5 px-2.5 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-md transition-colors"
+          title="Open Accessories & Furniture Catalog (Beds, Sofas, TVs)"
+        >
+          <Armchair className="h-3.5 w-3.5 text-indigo-600" />
+          <span className="hidden md:inline">Props Catalog</span>
         </button>
       </div>
 
@@ -231,6 +281,44 @@ export function CanvasToolbar() {
           </button>
         </div>
 
+        {/* Export & Import */}
+        <div className="flex items-center space-x-1 border-r border-slate-200 pr-2">
+          <button
+            onClick={handleExportSvg}
+            className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-md flex items-center gap-1 text-xs font-medium"
+            title="Export Architectural Blueprint (SVG)"
+          >
+            <FileCode className="h-4 w-4 text-sky-600" />
+            <span className="hidden xl:inline">SVG</span>
+          </button>
+
+          <button
+            onClick={handleExportJson}
+            className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-md flex items-center gap-1 text-xs font-medium"
+            title="Download Project JSON (.homeai.json)"
+          >
+            <Download className="h-4 w-4 text-indigo-600" />
+            <span className="hidden xl:inline">JSON</span>
+          </button>
+
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-md flex items-center gap-1 text-xs font-medium"
+            title="Import Project (.homeai.json)"
+          >
+            <Upload className="h-4 w-4 text-emerald-600" />
+            <span className="hidden xl:inline">Import</span>
+          </button>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,.homeai.json"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+        </div>
+
         {/* Persistence status & Save button */}
         <div className="flex items-center space-x-2">
           <div className="hidden sm:flex items-center text-xs text-slate-500">
@@ -259,6 +347,9 @@ export function CanvasToolbar() {
           </Button>
         </div>
       </div>
+
+      {/* Props Catalog Modal */}
+      <PropsCatalogModal isOpen={isCatalogOpen} onClose={() => setIsCatalogOpen(false)} />
     </div>
   );
 }

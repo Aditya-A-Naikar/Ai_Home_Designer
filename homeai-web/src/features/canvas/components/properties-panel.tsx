@@ -7,7 +7,7 @@ import { FloorManager } from './floor-manager';
 import { wallLength } from '@/core/geometry/wall-utils';
 import { polygonArea, polygonPerimeter, ROOM_TYPE_PRESETS } from '@/core/geometry/room-utils';
 import { Door } from '@/core/domain/types';
-import { Trash2, DoorOpen, AppWindow, Square, Hammer, Info } from 'lucide-react';
+import { Trash2, DoorOpen, AppWindow, Square, Hammer, Info, Armchair, RotateCw } from 'lucide-react';
 
 export function PropertiesPanel() {
   const { selectedElementId, selectedSubElement, selectElement, selectSubElement } = useCanvasStore();
@@ -20,7 +20,9 @@ export function PropertiesPanel() {
     updateDoor, 
     deleteDoor, 
     updateWindow, 
-    deleteWindow 
+    deleteWindow,
+    updateProp,
+    deleteProp
   } = useProjectStore();
 
   if (!currentProject) return null;
@@ -42,11 +44,15 @@ export function PropertiesPanel() {
     if (w && parentWall) selectedWin = { win: w, wallId: parentWall.id };
   }
 
-  const selectedWall = (!selectedDoor && !selectedWin) 
+  const selectedProp = selectedSubElement?.type === 'prop' 
+    ? floor.props?.find((p) => p.id === selectedSubElement.id) 
+    : null;
+
+  const selectedWall = (!selectedDoor && !selectedWin && !selectedProp) 
     ? floor.walls.find((w) => w.id === selectedElementId) 
     : null;
 
-  const selectedRoom = (!selectedDoor && !selectedWin && !selectedWall) 
+  const selectedRoom = (!selectedDoor && !selectedWin && !selectedWall && !selectedProp) 
     ? floor.rooms.find((r) => r.id === selectedElementId) 
     : null;
 
@@ -210,6 +216,84 @@ export function PropertiesPanel() {
                   <strong className="text-slate-800">{selectedWin.win.height} mm</strong>
                 </div>
               </div>
+            </div>
+          </div>
+        ) : selectedProp ? (
+          /* PROP INSPECTOR */
+          <div className="space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b">
+              <div className="flex items-center space-x-2">
+                <Armchair className="h-5 w-5 text-indigo-600" />
+                <h3 className="font-semibold text-slate-800">Prop Properties</h3>
+              </div>
+              <button 
+                onClick={() => {
+                  deleteProp(floor.id, selectedProp.id);
+                  selectSubElement(null);
+                }}
+                className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50"
+                title="Delete Prop"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-sm">
+              <div>
+                <label className="text-xs text-slate-500 font-medium block mb-1">Prop Name</label>
+                <input
+                  type="text"
+                  value={selectedProp.name}
+                  onChange={(e) => updateProp(floor.id, selectedProp.id, (p) => { p.name = e.target.value; })}
+                  className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-2 bg-slate-50 rounded border border-slate-200">
+                  <span className="text-slate-400 block text-[10px]">Category</span>
+                  <span className="font-bold text-slate-800 capitalize">{selectedProp.category}</span>
+                </div>
+                <div className="p-2 bg-slate-50 rounded border border-slate-200">
+                  <span className="text-slate-400 block text-[10px]">Type</span>
+                  <span className="font-bold text-slate-800 capitalize">{selectedProp.propType}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-2 bg-slate-50 rounded border border-slate-200">
+                  <span className="text-slate-400 block text-[10px]">Dimensions</span>
+                  <span className="font-bold text-slate-800">{selectedProp.dimensions.width} × {selectedProp.dimensions.depth} mm</span>
+                </div>
+                <div className="p-2 bg-slate-50 rounded border border-slate-200">
+                  <span className="text-slate-400 block text-[10px]">Rotation</span>
+                  <span className="font-bold text-slate-800">{selectedProp.rotation || 0}°</span>
+                </div>
+              </div>
+
+              {/* Rotate button */}
+              <div>
+                <button
+                  onClick={() => updateProp(floor.id, selectedProp.id, (p) => { p.rotation = ((p.rotation || 0) + 90) % 360; })}
+                  className="w-full py-1.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-md flex items-center justify-center gap-1.5 transition-colors border border-slate-200"
+                >
+                  <RotateCw className="h-3.5 w-3.5 text-indigo-600" />
+                  <span>Rotate 90° Clockwise</span>
+                </button>
+              </div>
+
+              {/* Specifications list */}
+              {selectedProp.specifications && Object.keys(selectedProp.specifications).length > 0 && (
+                <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-xs space-y-1">
+                  <span className="font-semibold text-slate-700 block mb-1">Specifications</span>
+                  {Object.entries(selectedProp.specifications).map(([k, v]) => (
+                    <div key={k} className="flex justify-between">
+                      <span className="text-slate-500 capitalize">{k.replace(/([A-Z])/g, ' $1')}:</span>
+                      <strong className="text-slate-800">{String(v)}</strong>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ) : selectedWall ? (

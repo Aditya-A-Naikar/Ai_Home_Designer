@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import { Project, Wall, Room, Door, Window, Floor, Point2D } from '@/core/domain/types';
+import { Project, Wall, Room, Door, Window, Floor, Point2D, Prop } from '@/core/domain/types';
 import { projectRepository } from '@/infrastructure/persistence/local-storage-project-repository';
 import { autoDetectRooms } from '@/core/geometry/room-utils';
 import { useCanvasStore } from './canvas-store';
@@ -46,8 +46,14 @@ interface ProjectActions {
   updateWindow: (floorId: string, wallId: string, windowId: string, updater: (win: Window) => void) => void;
   deleteWindow: (floorId: string, wallId: string, windowId: string) => void;
   
+  // Props / Accessories
+  addProp: (floorId: string, prop: Prop) => void;
+  updateProp: (floorId: string, propId: string, updater: (p: Prop) => void) => void;
+  deleteProp: (floorId: string, propId: string) => void;
+
   undo: () => void;
   redo: () => void;
+  importProject: (project: Project) => Promise<void>;
 }
 
 const MAX_HISTORY = 50;
@@ -119,6 +125,20 @@ export const useProjectStore = create<ProjectState & ProjectActions>()(
           state.isSaving = false;
         });
       }
+    },
+
+    importProject: async (project: Project) => {
+      set((state) => {
+        state.currentProject = project;
+        state.past = [];
+        state.future = [];
+        state.isLoading = false;
+        state.error = null;
+      });
+      await projectRepository.save(project);
+      useCanvasStore.getState().setActiveProject(project.id);
+      useCanvasStore.getState().setActiveFloor(project.activeFloorId);
+      useCanvasStore.getState().markModified(false);
     },
     
     addFloor: (floor) => set((state) => {
@@ -277,6 +297,33 @@ export const useProjectStore = create<ProjectState & ProjectActions>()(
       const wall = floor?.walls.find(w => w.id === wallId);
       if (wall) {
         wall.windows = wall.windows.filter(w => w.id !== windowId);
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    addProp: (floorId, prop) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      if (floor) {
+        if (!floor.props) floor.props = [];
+        floor.props.push(prop);
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    updateProp: (floorId, propId, updater) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      const prop = floor?.props?.find(p => p.id === propId);
+      if (prop) updater(prop);
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    deleteProp: (floorId, propId) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      if (floor && floor.props) {
+        floor.props = floor.props.filter(p => p.id !== propId);
       }
       useCanvasStore.getState().markModified(true);
     }),

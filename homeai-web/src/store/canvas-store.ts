@@ -3,10 +3,10 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import { Point2D, Door } from '@/core/domain/types';
 
-export type ToolType = 'select' | 'wall' | 'room' | 'door' | 'window' | 'pan';
+export type ToolType = 'select' | 'wall' | 'room' | 'door' | 'window' | 'prop' | 'pan';
 
 export interface SubElementSelection {
-  type: 'wall' | 'room' | 'door' | 'window';
+  type: 'wall' | 'room' | 'door' | 'window' | 'prop';
   id: string;
   parentWallId?: string;
 }

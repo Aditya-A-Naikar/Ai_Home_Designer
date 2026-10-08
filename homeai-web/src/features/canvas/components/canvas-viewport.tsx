@@ -6,6 +6,7 @@ import { useProjectStore } from '@/store/project-store';
 import { GridLayer } from './grid-layer';
 import { WallLayer } from './wall-layer';
 import { RoomLayer } from './room-layer';
+import { PropLayer } from './prop-layer';
 import { DimensionsLayer } from './dimensions-layer';
 import { screenToMm } from '@/core/canvas/transform';
 import { Point2D, Wall, Door, Window } from '@/core/domain/types';
@@ -69,7 +70,9 @@ export function CanvasViewport() {
     deleteWall,
     deleteDoor,
     deleteWindow,
-    deleteRoom
+    deleteRoom,
+    updateProp,
+    deleteProp
   } = useProjectStore();
   
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -129,6 +132,9 @@ export function CanvasViewport() {
           } else if (selectedSubElement.type === 'room') {
             deleteRoom(activeFloor.id, selectedSubElement.id);
             selectElement(null);
+          } else if (selectedSubElement.type === 'prop') {
+            deleteProp(activeFloor.id, selectedSubElement.id);
+            selectSubElement(null);
           }
         } else if (selectedElementId) {
           deleteWall(activeFloor.id, selectedElementId);
@@ -149,7 +155,7 @@ export function CanvasViewport() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [currentProject, selectedSubElement, selectedElementId, deleteDoor, deleteWindow, deleteWall, deleteRoom, selectElement, selectSubElement]);
+  }, [currentProject, selectedSubElement, selectedElementId, deleteDoor, deleteWindow, deleteWall, deleteRoom, deleteProp, selectElement, selectSubElement]);
 
   const getPointerMm = useCallback((e: React.MouseEvent | React.PointerEvent) => {
     if (!svgRef.current) return { x: 0, y: 0 };
@@ -449,6 +455,29 @@ export function CanvasViewport() {
               selectSubElement({ type: 'room', id });
             }} 
             preferredUnit={currentProject?.settings.preferredUnit || 'mm'} 
+          />
+
+          {/* Props & Furniture Accessories Layer */}
+          <PropLayer
+            props={activeFloor?.props || []}
+            zoom={zoom}
+            selectedSubElement={selectedSubElement}
+            onSelectProp={(propId) => {
+              selectSubElement({ type: 'prop', id: propId });
+            }}
+            onDeleteProp={(propId) => {
+              if (activeFloor) {
+                deleteProp(activeFloor.id, propId);
+                selectSubElement(null);
+              }
+            }}
+            onRotateProp={(propId) => {
+              if (activeFloor) {
+                updateProp(activeFloor.id, propId, (p) => {
+                  p.rotation = ((p.rotation || 0) + 90) % 360;
+                });
+              }
+            }}
           />
 
           {/* Room Polygon In-Progress Drawing */}

@@ -83,6 +83,58 @@ export interface Room {
   targetArea?: number; // target area in sq mm
 }
 
+export interface PropSpecification {
+  screenSizeInches?: number;
+  mountType?: "wall" | "console";
+  resolution?: string;
+  soundbar?: boolean;
+  material?: string;
+  seats?: number;
+  bedSize?: "King" | "Queen" | "Single" | "Double";
+  layout?: "straight" | "l_shape_left" | "l_shape_right" | "round";
+  [key: string]: string | number | boolean | undefined;
+}
+
+export type PropCategory =
+  | "living"
+  | "bedroom"
+  | "dining"
+  | "entertainment"
+  | "kitchen"
+  | "bathroom"
+  | "office";
+
+export type PropType =
+  | "tv"
+  | "sofa"
+  | "bed"
+  | "dining_table"
+  | "wardrobe"
+  | "desk"
+  | "coffee_table"
+  | "toilet"
+  | "shower"
+  | "sink";
+
+export interface Prop {
+  id: string;
+  floorId: string;
+  roomId?: string;
+  name: string;
+  category: PropCategory;
+  propType: PropType;
+  position: Point2D; // center position in mm
+  rotation: number; // in degrees: 0, 90, 180, 270
+  dimensions: {
+    width: number; // in mm
+    depth: number; // in mm
+    height?: number; // in mm
+  };
+  color?: string; // hex color for 2D styling
+  shape?: "rectangular" | "l_shape" | "curved" | "round";
+  specifications?: PropSpecification;
+}
+
 export interface Floor {
   id: string;
   projectId: string;
@@ -92,6 +144,7 @@ export interface Floor {
   height: number; // ceiling height in mm (e.g. 2800 mm)
   walls: Wall[];
   rooms: Room[];
+  props?: Prop[];
 }
 
 export interface Project {
