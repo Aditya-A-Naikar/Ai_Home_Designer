@@ -32,15 +32,24 @@ import {
   Sparkles,
   Layers,
   Box,
-  LayoutGrid
+  LayoutGrid,
+  Zap,
+  Droplets,
+  Wind,
+  Calculator,
+  FileText
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { fitToContent } from '@/core/canvas/transform';
 import { downloadProjectJson, parseProjectJson } from '@/core/export/json-exporter';
 import { downloadFloorSvg } from '@/core/export/svg-blueprint-exporter';
 import { PropsCatalogModal } from './props-catalog-modal';
+import { BOQEstimatorModal } from './boq-estimator-modal';
+import { PermittingSheetsModal } from './permitting-sheets-modal';
 
 export function CanvasToolbar() {
+  const [isBoqOpen, setIsBoqOpen] = useState(false);
+  const [isPermittingOpen, setIsPermittingOpen] = useState(false);
   const { 
     viewMode,
     setViewMode,
@@ -60,6 +69,12 @@ export function CanvasToolbar() {
     toggleShowAllDimensions,
     showUnderlay,
     toggleShowUnderlay,
+    showMEPElectrical,
+    toggleMEPElectrical,
+    showMEPPlumbing,
+    toggleMEPPlumbing,
+    showMEPHVAC,
+    toggleMEPHVAC,
     leftSidebarOpen,
     toggleLeftSidebar,
     aiAdvisorOpen,
@@ -325,6 +340,41 @@ export function CanvasToolbar() {
             <Layers className="h-3 w-3" />
             <span>Underlay</span>
           </button>
+
+          <div className="h-4 w-px bg-slate-200 mx-0.5" />
+
+          <button
+            onClick={toggleMEPElectrical}
+            className={`h-8 px-2 rounded-md text-[11px] flex items-center gap-1 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              showMEPElectrical ? 'bg-amber-100 text-amber-900 font-semibold shadow-xs' : 'text-slate-600 hover:bg-slate-200/60'
+            }`}
+            title="Toggle Electrical Schematics Layer (Lights, Fans, Power Outlets)"
+          >
+            <Zap className="h-3 w-3 text-amber-600" />
+            <span>Elec</span>
+          </button>
+
+          <button
+            onClick={toggleMEPPlumbing}
+            className={`h-8 px-2 rounded-md text-[11px] flex items-center gap-1 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              showMEPPlumbing ? 'bg-cyan-100 text-cyan-900 font-semibold shadow-xs' : 'text-slate-600 hover:bg-slate-200/60'
+            }`}
+            title="Toggle Plumbing & Sanitary Fixtures Layer (Water Stacks & Riser Shafts)"
+          >
+            <Droplets className="h-3 w-3 text-cyan-600" />
+            <span>Plumb</span>
+          </button>
+
+          <button
+            onClick={toggleMEPHVAC}
+            className={`h-8 px-2 rounded-md text-[11px] flex items-center gap-1 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              showMEPHVAC ? 'bg-emerald-100 text-emerald-900 font-semibold shadow-xs' : 'text-slate-600 hover:bg-slate-200/60'
+            }`}
+            title="Toggle HVAC & Ventilation Layer (Split AC & Exhausts)"
+          >
+            <Wind className="h-3 w-3 text-emerald-600" />
+            <span>HVAC</span>
+          </button>
         </div>
       </div>
 
@@ -426,6 +476,34 @@ export function CanvasToolbar() {
               <button
                 onClick={() => {
                   setExportMenuOpen(false);
+                  setIsBoqOpen(true);
+                }}
+                className="w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer transition-colors border-t border-slate-100"
+              >
+                <Calculator className="h-4 w-4 text-emerald-600 shrink-0" />
+                <div className="flex flex-col">
+                  <span className="font-semibold text-slate-800">Cost Estimator & BOQ</span>
+                  <span className="text-[10px] text-slate-400">Detailed material takeoff & budget</span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
+                  setExportMenuOpen(false);
+                  setIsPermittingOpen(true);
+                }}
+                className="w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer transition-colors border-t border-slate-100"
+              >
+                <FileText className="h-4 w-4 text-cyan-600 shrink-0" />
+                <div className="flex flex-col">
+                  <span className="font-semibold text-slate-800">Permitting Blueprint Set (A101–A105)</span>
+                  <span className="text-[10px] text-slate-400">5-sheet package ready for PDF print</span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
+                  setExportMenuOpen(false);
                   fileInputRef.current?.click();
                 }}
                 className="w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer transition-colors border-t border-slate-100"
@@ -477,6 +555,24 @@ export function CanvasToolbar() {
 
       {/* Accessories & Props Catalog Modal */}
       <PropsCatalogModal isOpen={isCatalogOpen} onClose={() => setIsCatalogOpen(false)} />
+
+      {/* Bill of Quantities (BOQ) & Cost Estimator Modal */}
+      {currentProject && (
+        <BOQEstimatorModal 
+          project={currentProject} 
+          isOpen={isBoqOpen} 
+          onClose={() => setIsBoqOpen(false)} 
+        />
+      )}
+
+      {/* Multi-Sheet Architectural Permitting Package Modal */}
+      {currentProject && (
+        <PermittingSheetsModal 
+          project={currentProject} 
+          isOpen={isPermittingOpen} 
+          onClose={() => setIsPermittingOpen(false)} 
+        />
+      )}
     </header>
   );
 }

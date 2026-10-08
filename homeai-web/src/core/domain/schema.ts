@@ -233,6 +233,59 @@ export const PropSchema = z.object({
   specifications: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
 });
 
+export const ElectricalPointTypeSchema = z.enum([
+  "distribution_board",
+  "switch_plate",
+  "power_socket_16a",
+  "power_socket_6a",
+  "light_ceiling",
+  "light_wall",
+  "fan_ceiling",
+  "stair_two_way",
+]);
+
+export const ElectricalPointSchema = z.object({
+  id: z.string(),
+  floorId: z.string(),
+  roomId: z.string().optional(),
+  pointType: ElectricalPointTypeSchema,
+  position: Point2DSchema,
+  wallId: z.string().optional(),
+  circuitNumber: z.string().optional(),
+});
+
+export const PlumbingFixtureTypeSchema = z.enum([
+  "water_closet",
+  "wash_basin",
+  "shower_drain",
+  "kitchen_sink",
+  "vertical_pipe_chase",
+  "rainwater_downpipe",
+]);
+
+export const PlumbingFixtureSchema = z.object({
+  id: z.string(),
+  floorId: z.string(),
+  roomId: z.string().optional(),
+  fixtureType: PlumbingFixtureTypeSchema,
+  position: Point2DSchema,
+  pipeDiameterMm: z.number().positive().default(110),
+});
+
+export const HVACTypeSchema = z.enum([
+  "split_ac_indoor",
+  "split_ac_outdoor",
+  "exhaust_fan",
+]);
+
+export const HVACPointSchema = z.object({
+  id: z.string(),
+  floorId: z.string(),
+  roomId: z.string().optional(),
+  hvacType: HVACTypeSchema,
+  position: Point2DSchema,
+});
+
 export const FloorSchema = z.object({
   id: z.string(),
   projectId: z.string(),
@@ -246,6 +299,9 @@ export const FloorSchema = z.object({
   stairs: z.array(StaircaseSchema).optional(),
   voids: z.array(SlabVoidSchema).optional(),
   columns: z.array(StructuralColumnSchema).optional(),
+  electricalPoints: z.array(ElectricalPointSchema).optional(),
+  plumbingFixtures: z.array(PlumbingFixtureSchema).optional(),
+  hvacPoints: z.array(HVACPointSchema).optional(),
 });
 
 export const DuplexConfigSchema = z.object({

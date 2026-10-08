@@ -231,6 +231,56 @@ export interface Prop {
   specifications?: PropSpecification;
 }
 
+export type ElectricalPointType =
+  | "distribution_board"
+  | "switch_plate"
+  | "power_socket_16a"
+  | "power_socket_6a"
+  | "light_ceiling"
+  | "light_wall"
+  | "fan_ceiling"
+  | "stair_two_way";
+
+export interface ElectricalPoint {
+  id: string;
+  floorId: string;
+  roomId?: string;
+  pointType: ElectricalPointType;
+  position: Point2D; // in mm
+  wallId?: string;
+  circuitNumber?: string;
+}
+
+export type PlumbingFixtureType =
+  | "water_closet"
+  | "wash_basin"
+  | "shower_drain"
+  | "kitchen_sink"
+  | "vertical_pipe_chase"
+  | "rainwater_downpipe";
+
+export interface PlumbingFixture {
+  id: string;
+  floorId: string;
+  roomId?: string;
+  fixtureType: PlumbingFixtureType;
+  position: Point2D; // in mm
+  pipeDiameterMm: number; // e.g. 110, 75, 32
+}
+
+export type HVACType =
+  | "split_ac_indoor"
+  | "split_ac_outdoor"
+  | "exhaust_fan";
+
+export interface HVACPoint {
+  id: string;
+  floorId: string;
+  roomId?: string;
+  hvacType: HVACType;
+  position: Point2D; // in mm
+}
+
 export interface Floor {
   id: string;
   projectId: string;
@@ -244,6 +294,9 @@ export interface Floor {
   stairs?: Staircase[];
   voids?: SlabVoid[];
   columns?: StructuralColumn[];
+  electricalPoints?: ElectricalPoint[];
+  plumbingFixtures?: PlumbingFixture[];
+  hvacPoints?: HVACPoint[];
 }
 
 export interface DuplexConfig {

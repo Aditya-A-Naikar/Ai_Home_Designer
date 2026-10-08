@@ -3,7 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import { Point2D, Door } from '@/core/domain/types';
 
-export type ToolType = 'select' | 'wall' | 'room' | 'door' | 'window' | 'prop' | 'stair' | 'column' | 'pan';
+export type ToolType = 'select' | 'wall' | 'room' | 'door' | 'window' | 'prop' | 'stair' | 'column' | 'pan' | 'mep';
 
 export interface SubElementSelection {
   type: 'wall' | 'room' | 'door' | 'window' | 'prop' | 'stair' | 'column' | 'void';
@@ -33,6 +33,11 @@ interface CanvasState {
   showUnderlay: boolean;
   leftSidebarOpen: boolean;
   aiAdvisorOpen: boolean;
+
+  // MEP Layer Visibility
+  showMEPElectrical: boolean;
+  showMEPPlumbing: boolean;
+  showMEPHVAC: boolean;
 
   // Placement parameters
   doorWidth: number;
@@ -64,6 +69,11 @@ interface CanvasActions {
   toggleAIAdvisor: () => void;
   setAIAdvisorOpen: (open: boolean) => void;
 
+  // MEP Toggles
+  toggleMEPElectrical: () => void;
+  toggleMEPPlumbing: () => void;
+  toggleMEPHVAC: () => void;
+
   setDoorWidth: (width: number) => void;
   setDoorSwing: (swing: Door['swingDirection']) => void;
   setWindowWidth: (width: number) => void;
@@ -94,6 +104,10 @@ export const useCanvasStore = create<CanvasStore>()(
       showUnderlay: true,
       leftSidebarOpen: true,
       aiAdvisorOpen: true,
+
+      showMEPElectrical: false,
+      showMEPPlumbing: false,
+      showMEPHVAC: false,
 
       doorWidth: 900,
       doorSwing: 'inward_right',
@@ -137,6 +151,10 @@ export const useCanvasStore = create<CanvasStore>()(
       toggleAIAdvisor: () => set((state) => { state.aiAdvisorOpen = !state.aiAdvisorOpen; }),
       setAIAdvisorOpen: (open) => set((state) => { state.aiAdvisorOpen = open; }),
 
+      toggleMEPElectrical: () => set((state) => { state.showMEPElectrical = !state.showMEPElectrical; }),
+      toggleMEPPlumbing: () => set((state) => { state.showMEPPlumbing = !state.showMEPPlumbing; }),
+      toggleMEPHVAC: () => set((state) => { state.showMEPHVAC = !state.showMEPHVAC; }),
+
       setDoorWidth: (w) => set((state) => { state.doorWidth = w; }),
       setDoorSwing: (s) => set((state) => { state.doorSwing = s; }),
       setWindowWidth: (w) => set((state) => { state.windowWidth = w; }),
@@ -154,6 +172,9 @@ export const useCanvasStore = create<CanvasStore>()(
         gridSize: state.gridSize,
         showAllDimensions: state.showAllDimensions,
         showUnderlay: state.showUnderlay,
+        showMEPElectrical: state.showMEPElectrical,
+        showMEPPlumbing: state.showMEPPlumbing,
+        showMEPHVAC: state.showMEPHVAC,
       }),
     }
   )

@@ -11,6 +11,8 @@ import { StairLayer } from './stair-layer';
 import { VoidLayer } from './void-layer';
 import { ColumnLayer } from './column-layer';
 import { DimensionsLayer } from './dimensions-layer';
+import { MEPLayer } from './mep-layer';
+import { generateDefaultMepLayout } from '@/core/geometry/mep-generator';
 import { screenToMm } from '@/core/canvas/transform';
 import { Point2D, Wall, Door, Window, StructuralColumn } from '@/core/domain/types';
 import { createStairPreset } from '@/core/geometry/stair-utils';
@@ -60,6 +62,9 @@ export function CanvasViewport() {
     gridSize,
     showAllDimensions,
     showUnderlay,
+    showMEPElectrical,
+    showMEPPlumbing,
+    showMEPHVAC,
     doorWidth,
     doorSwing,
     windowWidth,
@@ -814,6 +819,23 @@ export function CanvasViewport() {
             }}
             onColumnPointerDown={handleColumnPointerDown}
           />
+
+          {/* MEP Architectural Schematics Layer */}
+          {(showMEPElectrical || showMEPPlumbing || showMEPHVAC) && activeFloor && (
+            <MEPLayer
+              floor={
+                (activeFloor.electricalPoints && activeFloor.electricalPoints.length > 0)
+                  ? activeFloor
+                  : {
+                      ...activeFloor,
+                      ...generateDefaultMepLayout(activeFloor)
+                    }
+              }
+              showElectrical={showMEPElectrical}
+              showPlumbing={showMEPPlumbing}
+              showHVAC={showMEPHVAC}
+            />
+          )}
 
           {/* Room Polygon In-Progress Drawing */}
           {tool === 'room' && roomVertices.length > 0 && (
