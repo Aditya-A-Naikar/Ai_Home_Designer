@@ -17,6 +17,7 @@ export default function EditorPage() {
   const { loadProject, isLoading, error, currentProject, undo, redo, saveProject } = useProjectStore();
   const { 
     viewMode,
+    setViewMode,
     setTool, 
     selectElement, 
     selectSubElement, 
@@ -24,6 +25,15 @@ export default function EditorPage() {
     leftSidebarOpen,
     setLeftSidebarOpen 
   } = useCanvasStore();
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const search = new URLSearchParams(window.location.search);
+      if (search.get('view') === '3d') {
+        setViewMode('3d');
+      }
+    }
+  }, [setViewMode]);
 
   useEffect(() => {
     if (projectId) {
