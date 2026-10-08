@@ -1,16 +1,36 @@
 "use client";
 
-import React from 'react';
-import { useCanvasStore } from '@/store/canvas-store';
+import React, { useState } from 'react';
+import { useCanvasStore, ToolType } from '@/store/canvas-store';
 import { useProjectStore } from '@/store/project-store';
 import { FloorManager } from './floor-manager';
+import { PropsCatalogModal } from './props-catalog-modal';
 import { wallLength } from '@/core/geometry/wall-utils';
 import { polygonArea, polygonPerimeter, ROOM_TYPE_PRESETS } from '@/core/geometry/room-utils';
 import { Door } from '@/core/domain/types';
-import { Trash2, DoorOpen, AppWindow, Square, Hammer, Info, Armchair, RotateCw } from 'lucide-react';
+import { 
+  Trash2, 
+  DoorOpen, 
+  AppWindow, 
+  Square, 
+  Hammer, 
+  Info, 
+  Armchair, 
+  RotateCw, 
+  MousePointer2, 
+  Move, 
+  Sparkles 
+} from 'lucide-react';
 
 export function PropertiesPanel() {
-  const { selectedElementId, selectedSubElement, selectElement, selectSubElement } = useCanvasStore();
+  const { 
+    selectedElementId, 
+    selectedSubElement, 
+    selectElement, 
+    selectSubElement,
+    tool,
+    setTool 
+  } = useCanvasStore();
   const { 
     currentProject, 
     updateWall, 
@@ -22,8 +42,20 @@ export function PropertiesPanel() {
     updateWindow, 
     deleteWindow,
     updateProp,
-    deleteProp
+    deleteProp,
+    detectAndAddRooms
   } = useProjectStore();
+
+  const [isCatalogOpen, setIsCatalogOpen] = useState(false);
+
+  const tools: { id: ToolType; icon: React.ReactNode; label: string; shortcut: string }[] = [
+    { id: 'select', icon: <MousePointer2 className="h-4 w-4" />, label: 'Select', shortcut: 'V' },
+    { id: 'pan', icon: <Move className="h-4 w-4" />, label: 'Pan', shortcut: 'H' },
+    { id: 'wall', icon: <Hammer className="h-4 w-4" />, label: 'Wall', shortcut: 'W' },
+    { id: 'room', icon: <Square className="h-4 w-4" />, label: 'Room Polygon', shortcut: 'R' },
+    { id: 'door', icon: <DoorOpen className="h-4 w-4" />, label: 'Door', shortcut: 'D' },
+    { id: 'window', icon: <AppWindow className="h-4 w-4" />, label: 'Window', shortcut: 'Win' },
+  ];
 
   if (!currentProject) return null;
 
@@ -67,6 +99,66 @@ export function PropertiesPanel() {
   return (
     <div className="w-80 border-r bg-white flex flex-col h-full overflow-y-auto shrink-0 select-none">
       <FloorManager />
+
+      {/* CAD DESIGN TOOLS PALETTE */}
+      <div className="p-3 border-b bg-slate-50/70 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            CAD Tools
+          </span>
+          <span className="text-[10px] text-slate-400 font-medium">Click or use key</span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-1.5">
+          {tools.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTool(t.id)}
+              className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
+                tool === t.id
+                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs font-semibold'
+                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-slate-300'
+              }`}
+              title={`${t.label} (Press ${t.shortcut})`}
+            >
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className={tool === t.id ? 'text-white' : 'text-slate-500'}>{t.icon}</span>
+                <span className="truncate whitespace-nowrap">{t.label}</span>
+              </div>
+              <kbd className={`px-1 rounded text-[9px] font-mono ${
+                tool === t.id ? 'bg-indigo-700 text-indigo-100' : 'bg-slate-100 text-slate-400'
+              }`}>
+                {t.shortcut}
+              </kbd>
+            </button>
+          ))}
+        </div>
+
+        {/* Quick Actions (Catalog & Auto-Rooms) */}
+        <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+          <button
+            onClick={() => setIsCatalogOpen(true)}
+            className="flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition-colors cursor-pointer"
+            title="Open Accessories & Furniture Catalog"
+          >
+            <Armchair className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+            <span className="whitespace-nowrap">Props Catalog</span>
+          </button>
+          
+          <button
+            onClick={() => {
+              const count = detectAndAddRooms(floor.id);
+              if (count > 0) alert(`Auto-detected ${count} room(s) from enclosed wall boundaries!`);
+              else alert("No new enclosed wall loops found. Draw connected walls first.");
+            }}
+            className="flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 transition-colors cursor-pointer"
+            title="Auto-detect rooms from closed wall boundaries"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+            <span className="whitespace-nowrap">Auto-Rooms</span>
+          </button>
+        </div>
+      </div>
       
       <div className="p-4 flex-1 space-y-4">
         {/* DOOR INSPECTOR */}
@@ -474,6 +566,9 @@ export function PropertiesPanel() {
           </div>
         )}
       </div>
+
+      {/* Accessories & Furniture Catalog Modal */}
+      <PropsCatalogModal isOpen={isCatalogOpen} onClose={() => setIsCatalogOpen(false)} />
     </div>
   );
 }
