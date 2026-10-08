@@ -5,9 +5,11 @@ import Link from "next/link";
 import { Plus, Search, Sparkles, FolderOpen } from "lucide-react";
 import { Project } from "@/core/domain/types";
 import { projectRepository } from "@/infrastructure/persistence/local-storage-project-repository";
+import { getMyHomeProject } from "@/core/domain/demo-project";
 import { ProjectCard } from "./project-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Home } from "lucide-react";
 
 export function ProjectDashboard() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -61,6 +63,16 @@ export function ProjectDashboard() {
     }
   };
 
+  const handleLoadMyHome = async () => {
+    try {
+      const myHome = getMyHomeProject();
+      await projectRepository.save(myHome);
+      await loadProjects();
+    } catch (err) {
+      console.error("Failed to load My Home:", err);
+    }
+  };
+
   const filteredProjects = projects.filter((p) =>
     p.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -78,10 +90,14 @@ export function ProjectDashboard() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleLoadMyHome} className="border-indigo-200 bg-indigo-50/50 text-indigo-700 hover:bg-indigo-100">
+            <Home className="h-4 w-4 text-indigo-600" />
+            Open &quot;My Home&quot;
+          </Button>
           <Button variant="outline" size="sm" onClick={handleLoadDemo}>
-            <Sparkles className="h-4 w-4 text-indigo-600" />
-            Load Sample Villa
+            <Sparkles className="h-4 w-4 text-amber-600" />
+            Sample Villa
           </Button>
           <Button size="sm" asChild>
             <Link href="/projects/new">

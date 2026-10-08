@@ -1,7 +1,7 @@
 import { Project } from "@/core/domain/types";
 import { ProjectSchema } from "@/core/domain/schema";
 import { generateId } from "@/core/domain/project-factory";
-import { getDemoProject } from "@/core/domain/demo-project";
+import { getDemoProject, getMyHomeProject } from "@/core/domain/demo-project";
 import { IProjectRepository } from "./project-repository.interface";
 
 const STORAGE_KEY = "homeai_projects_v1";
@@ -55,7 +55,20 @@ export class LocalStorageProjectRepository implements IProjectRepository {
 
   async getById(id: string): Promise<Project | null> {
     const all = await this.getAll();
-    return all.find((p) => p.id === id) || null;
+    const found = all.find((p) => p.id === id);
+    if (found) return found;
+
+    if (id === "my-home") {
+      const myHome = getMyHomeProject();
+      await this.save(myHome);
+      return myHome;
+    }
+
+    if (id === "demo-sunset-villa" || id === "demo-sunset-ridge") {
+      return this.seedDemo();
+    }
+
+    return null;
   }
 
   async save(project: Project): Promise<void> {
