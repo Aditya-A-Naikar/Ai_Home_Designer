@@ -65,7 +65,9 @@ export class LocalStorageProjectRepository implements IProjectRepository {
     }
 
     if (id === "demo-sunset-villa" || id === "demo-sunset-ridge") {
-      return this.seedDemo();
+      const demo = getDemoProject();
+      await this.save(demo);
+      return demo;
     }
 
     return null;
@@ -148,11 +150,13 @@ export class LocalStorageProjectRepository implements IProjectRepository {
    */
   async seedDemo(): Promise<Project> {
     const demo = getDemoProject();
-    const existing = await this.getById(demo.id);
+    const all = await this.getAll();
+    const existing = all.find((p) => p.id === demo.id);
     if (!existing) {
       await this.save(demo);
+      return demo;
     }
-    return demo;
+    return existing;
   }
 }
 

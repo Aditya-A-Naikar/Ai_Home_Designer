@@ -164,4 +164,37 @@ describe("LocalStorageProjectRepository", () => {
     expect(all.length).toBe(1);
     expect(all[0].name).toBe("Valid Project");
   });
+
+  it("seeds and retrieves demo project without recursion or freeze", async () => {
+    const demo = await repo.seedDemo();
+    expect(demo).toBeDefined();
+    expect(demo.id).toBe("demo-sunset-villa");
+
+    // Idempotent: repeated calls should return the same project
+    const demo2 = await repo.seedDemo();
+    expect(demo2.id).toBe("demo-sunset-villa");
+
+    const all = await repo.getAll();
+    expect(all.length).toBe(1);
+    expect(all[0].id).toBe("demo-sunset-villa");
+
+    // Can retrieve by ID directly
+    const retrieved = await repo.getById("demo-sunset-villa");
+    expect(retrieved).not.toBeNull();
+    expect(retrieved?.id).toBe("demo-sunset-villa");
+  });
+
+  it("retrieves demo-sunset-villa even if storage was initially empty without hanging", async () => {
+    window.localStorage.clear();
+    const retrieved = await repo.getById("demo-sunset-villa");
+    expect(retrieved).not.toBeNull();
+    expect(retrieved?.id).toBe("demo-sunset-villa");
+  });
+
+  it("retrieves my-home even if storage was initially empty without hanging", async () => {
+    window.localStorage.clear();
+    const retrieved = await repo.getById("my-home");
+    expect(retrieved).not.toBeNull();
+    expect(retrieved?.id).toBe("my-home");
+  });
 });
