@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { generatePlanFromPrompt } from '@/core/ai/plan-generator';
+import { orchestrateDesignAction } from '@/core/ai/action-orchestrator';
 import { Project } from '@/core/domain/types';
 
 export async function POST(req: Request) {
@@ -18,12 +19,23 @@ export async function POST(req: Request) {
     const project = projectContext as Project;
     const generationResult = generatePlanFromPrompt(userMessage || "audit", project, undefined, selectedEntity);
 
+    // Check if prompt describes a multi-option design modification request
+    const pLower = (userMessage || "").toLowerCase();
+    const isMicroEdit = 
+      (pLower.includes("sofa") || pLower.includes("couch") || pLower.includes("carpet") || pLower.includes("rug") || pLower.includes("move") || pLower.includes("window") || pLower.includes("closer")) &&
+      !pLower.includes("2bhk") && !pLower.includes("1bhk") && !pLower.includes("duplex");
+
+    const proposal = isMicroEdit 
+      ? orchestrateDesignAction(userMessage, project, selectedEntity) 
+      : null;
+
     return NextResponse.json({
       message: generationResult.message,
       actions: generationResult.actions,
       suggestions: generationResult.suggestions,
       replaceFloor: generationResult.replaceFloor,
       placementSummary: generationResult.placementSummary,
+      proposal,
     });
 
   } catch (error) {

@@ -102,6 +102,7 @@ export function useAIAdvisor(projectId: string) {
         suggestions: data.suggestions,
         actions: data.actions,
         placementSummary: data.placementSummary,
+        proposal: data.proposal,
         timestamp: new Date().toISOString()
       };
       

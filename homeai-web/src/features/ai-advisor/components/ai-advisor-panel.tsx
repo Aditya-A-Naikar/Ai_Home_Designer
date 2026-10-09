@@ -4,15 +4,17 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useAIAdvisor } from '../hooks/use-ai-advisor';
 import { useProjectStore } from '@/store/project-store';
 import { useCanvasStore } from '@/store/canvas-store';
-import { Send, Bot, User, CheckCircle2, ChevronRight, Sparkles, ShieldAlert, Sun, Compass, Ruler, Tv, BedDouble, LayoutGrid, Building2 } from 'lucide-react';
+import { Send, Bot, User, CheckCircle2, ChevronRight, Sparkles, ShieldAlert, ShieldCheck, Sun, Compass, Ruler, Tv, BedDouble, LayoutGrid, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
 export function AIAdvisorPanel() {
-  const { currentProject } = useProjectStore();
+  const { currentProject, applyPlanGenerationActions } = useProjectStore();
   const { messages, isLoading, sendMessage, applySuggestion } = useAIAdvisor(currentProject?.id || '');
   const { aiAdvisorOpen, setAIAdvisorOpen, selectedSubElement, selectSubElement } = useCanvasStore();
   const [input, setInput] = useState('');
+  const [selectedSwatches, setSelectedSwatches] = useState<Record<string, string>>({});
+  const [appliedProposals, setAppliedProposals] = useState<Record<string, string>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const activeFloor = currentProject?.floors.find(
@@ -118,6 +120,137 @@ export function AIAdvisorPanel() {
                   {msg.placementSummary.viewingDistanceM && (
                     <span>• {msg.placementSummary.viewingDistanceM.toFixed(1)}m viewing dist</span>
                   )}
+                </div>
+              )}
+
+              {/* Verified Multi-Option Proposal Card (Matching Reference UI) */}
+              {msg.proposal && (
+                <div className="w-full bg-[#0a1122] border border-cyan-500/40 rounded-xl p-3 space-y-2.5 text-xs text-slate-200 shadow-lg shadow-cyan-950/40">
+                  {/* Verified AI Engine & Clearance Checked Banner */}
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-cyan-300">
+                      <ShieldCheck className="h-3.5 w-3.5 text-cyan-400" />
+                      <span>Verified AI Design Proposal</span>
+                    </div>
+                    <span className="text-[9px] font-mono text-emerald-400 bg-emerald-950/80 border border-emerald-800/60 px-1.5 py-0.5 rounded">
+                      Clearance Checked
+                    </span>
+                  </div>
+
+                  {/* Before / After (Preview) Cards */}
+                  <div className="grid grid-cols-2 gap-2">
+                    {/* Before State */}
+                    <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-2 space-y-1">
+                      <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">Before</span>
+                      <div 
+                        className="h-10 rounded border border-slate-800 flex items-center justify-center relative overflow-hidden" 
+                        style={{ backgroundColor: msg.proposal.diffPreview.before.color }}
+                      >
+                        <span className="text-[9px] font-semibold text-white/90 drop-shadow-sm px-1 truncate">
+                          {msg.proposal.diffPreview.before.finish}
+                        </span>
+                      </div>
+                      <p className="text-[9px] text-slate-400 line-clamp-1">{msg.proposal.diffPreview.before.description}</p>
+                    </div>
+
+                    {/* After State (Preview) */}
+                    <div className="bg-emerald-950/40 border border-emerald-500/50 rounded-lg p-2 space-y-1">
+                      <span className="text-[9px] uppercase font-bold text-emerald-400 tracking-wider">After (Preview)</span>
+                      <div 
+                        className="h-10 rounded border border-emerald-500/60 flex items-center justify-center relative overflow-hidden shadow-xs shadow-emerald-500/30" 
+                        style={{ backgroundColor: selectedSwatches[`${msg.id}_sofa_options`] || msg.proposal.diffPreview.after.color }}
+                      >
+                        <span className="text-[9px] font-semibold text-white drop-shadow-sm px-1 truncate">
+                          {msg.proposal.diffPreview.after.finish}
+                        </span>
+                      </div>
+                      <p className="text-[9px] text-emerald-300 line-clamp-1">{msg.proposal.diffPreview.after.description}</p>
+                    </div>
+                  </div>
+
+                  {/* Architectural Clearance Checks */}
+                  <div className="space-y-0.5 bg-slate-950/60 p-2 rounded-lg border border-slate-800 text-[10px]">
+                    {msg.proposal.diffPreview.clearanceChecks.map((chk, i) => (
+                      <div key={i} className="flex items-center justify-between text-slate-300">
+                        <span>✓ {chk.rule}</span>
+                        <span className="text-emerald-400 font-mono text-[9px]">{chk.value}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Swatches Options Pickers */}
+                  {msg.proposal.swatchGroups.map((group) => (
+                    <div key={group.id} className="space-y-1 pt-0.5">
+                      <span className="text-[10px] font-bold text-slate-300 block">{group.title}</span>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {group.options.map((opt) => {
+                          const currentHex = selectedSwatches[`${msg.id}_${group.id}`] || group.options[0].hex;
+                          const isSelected = currentHex === opt.hex;
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => setSelectedSwatches(prev => ({ ...prev, [`${msg.id}_${group.id}`]: opt.hex }))}
+                              className={`flex flex-col items-center gap-1 p-1 rounded-lg border transition-all cursor-pointer ${
+                                isSelected ? 'border-cyan-400 bg-slate-800/90 shadow-xs' : 'border-slate-800 hover:border-slate-700 bg-slate-950/50'
+                              }`}
+                              title={`${opt.name} (${opt.material})`}
+                            >
+                              <span className="h-4 w-4 rounded-full border border-slate-700 shrink-0" style={{ backgroundColor: opt.hex }} />
+                              <span className="text-[8px] text-slate-300 truncate w-full text-center leading-tight">{opt.name}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Execution Action Controls */}
+                  <div className="flex items-center gap-2 pt-1 border-t border-slate-800/80">
+                    <button
+                      type="button"
+                      disabled={!!appliedProposals[msg.id]}
+                      onClick={() => {
+                        if (!activeFloor || !msg.proposal) return;
+                        const chosenColor = selectedSwatches[`${msg.id}_sofa_options`] || msg.proposal.diffPreview.after.color;
+                        const acts = msg.proposal.actionsTargetObject.map(a => ({
+                          ...a,
+                          propUpdates: { ...a.propUpdates, color: chosenColor }
+                        }));
+                        applyPlanGenerationActions(activeFloor.id, acts);
+                        setAppliedProposals(prev => ({ ...prev, [msg.id]: "object" }));
+                      }}
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all cursor-pointer text-center ${
+                        appliedProposals[msg.id] === "object"
+                          ? "bg-emerald-600 text-white"
+                          : "bg-cyan-600 hover:bg-cyan-500 text-white shadow-xs"
+                      }`}
+                    >
+                      {appliedProposals[msg.id] === "object" ? "✓ Applied to Object" : "Apply to this object"}
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={!!appliedProposals[msg.id]}
+                      onClick={() => {
+                        if (!activeFloor || !msg.proposal) return;
+                        const chosenColor = selectedSwatches[`${msg.id}_sofa_options`] || msg.proposal.diffPreview.after.color;
+                        const acts = msg.proposal.actionsWholeRoom.map(a => ({
+                          ...a,
+                          propUpdates: a.propUpdates ? { ...a.propUpdates, color: chosenColor } : undefined
+                        }));
+                        applyPlanGenerationActions(activeFloor.id, acts);
+                        setAppliedProposals(prev => ({ ...prev, [msg.id]: "room" }));
+                      }}
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-bold border transition-all cursor-pointer text-center ${
+                        appliedProposals[msg.id] === "room"
+                          ? "bg-emerald-600 text-white border-emerald-500"
+                          : "bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700"
+                      }`}
+                    >
+                      {appliedProposals[msg.id] === "room" ? "✓ Applied to Room" : "Apply to room"}
+                    </button>
+                  </div>
                 </div>
               )}
               

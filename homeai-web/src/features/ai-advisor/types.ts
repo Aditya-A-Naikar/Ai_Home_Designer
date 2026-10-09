@@ -1,5 +1,6 @@
 import { PlanGenerationAction } from "@/core/ai/plan-generator";
 import { ActionPayload, AuditCategory, AuditSeverity } from "@/core/ai/architect-rules";
+import { OrchestratedActionProposal } from "@/core/ai/action-orchestrator";
 
 export interface AISuggestion {
   id: string;
@@ -24,4 +25,5 @@ export interface AIMessage {
     roomsAffected: string[];
     viewingDistanceM?: number;
   };
+  proposal?: OrchestratedActionProposal;
 }

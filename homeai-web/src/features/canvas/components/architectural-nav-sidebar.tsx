@@ -19,19 +19,22 @@ import {
   Settings, 
   ChevronLeft, 
   ChevronRight,
-  Compass
+  Compass,
+  Cpu
 } from "lucide-react";
 
 interface ArchitecturalNavSidebarProps {
   onOpenRenderStudio?: () => void;
   onOpenExportModal?: () => void;
   onOpenBoqModal?: () => void;
+  onOpenMlopsModal?: () => void;
 }
 
 export function ArchitecturalNavSidebar({
   onOpenRenderStudio,
   onOpenExportModal,
   onOpenBoqModal,
+  onOpenMlopsModal,
 }: ArchitecturalNavSidebarProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -143,6 +146,13 @@ export function ArchitecturalNavSidebar({
       label: "BOQ Costs",
       icon: <Calculator className="h-4 w-4" />,
       onClick: onOpenBoqModal,
+      type: "action" as const,
+    },
+    {
+      id: "mlops_pipeline",
+      label: "AI / ML Pipeline",
+      icon: <Cpu className="h-4 w-4" />,
+      onClick: onOpenMlopsModal,
       type: "action" as const,
     },
   ];

@@ -18,6 +18,7 @@ import { FloorPlanConfirmationModal } from '@/features/canvas/components/floor-p
 import { BOQEstimatorModal } from '@/features/canvas/components/boq-estimator-modal';
 import { PermittingSheetsModal } from '@/features/canvas/components/permitting-sheets-modal';
 import { AIRenderStudioModal } from '@/features/canvas/components/ai-render-studio-modal';
+import { MLOpsPipelineModal } from '@/features/canvas/components/mlops-pipeline-modal';
 
 export default function EditorPage() {
   const params = useParams();
@@ -37,6 +38,7 @@ export default function EditorPage() {
   const [showRenderModal, setShowRenderModal] = useState(false);
   const [showBoqModal, setShowBoqModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showMlopsModal, setShowMlopsModal] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -133,6 +135,7 @@ export default function EditorPage() {
           onOpenRenderStudio={() => setShowRenderModal(true)}
           onOpenExportModal={() => setShowExportModal(true)}
           onOpenBoqModal={() => setShowBoqModal(true)}
+          onOpenMlopsModal={() => setShowMlopsModal(true)}
         />
 
         {/* Column 2: Searchable Furniture & Decor Catalog Dock */}
@@ -186,6 +189,11 @@ export default function EditorPage() {
         floorFinish="teak_hardwood"
         wallFinish="white_plaster"
         currentRoomName={null}
+      />
+
+      <MLOpsPipelineModal
+        isOpen={showMlopsModal}
+        onClose={() => setShowMlopsModal(false)}
       />
     </div>
   );
