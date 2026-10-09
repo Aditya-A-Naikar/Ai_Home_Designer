@@ -4,10 +4,23 @@ import { auditFloorPlan, ArchitecturalSuggestion, AuditCategory } from "./archit
 import { build2BHKLayout, build1BHKLayout, buildLivingRoomSuite, buildBedroomSuite, buildDuplexLayout } from "./architectural-layouts";
 import { validateFloorPlan, calculatePolygonAreaSqM } from "../geometry/floor-plan-validator";
 import { ARCHITECTURAL_DESIGN_PRESETS } from "../geometry/design-presets";
+import { FloorFinishType, WallFinishType } from "../geometry/pbr-materials";
 import { v4 as uuidv4 } from "uuid";
 
 export interface PlanGenerationAction {
-  type: "add_prop" | "add_room" | "add_wall" | "add_window" | "add_door" | "add_staircase" | "add_void" | "add_column";
+  type: 
+    | "add_prop" 
+    | "add_room" 
+    | "add_wall" 
+    | "add_window" 
+    | "add_door" 
+    | "add_staircase" 
+    | "add_void" 
+    | "add_column"
+    | "update_prop"
+    | "update_wall_finish"
+    | "update_floor_finish"
+    | "apply_preset";
   floorId: string;
   prop?: Prop;
   wall?: Wall;
@@ -17,6 +30,12 @@ export interface PlanGenerationAction {
   staircase?: Staircase;
   void?: SlabVoid;
   column?: StructuralColumn;
+  propId?: string;
+  propUpdates?: Partial<Prop>;
+  wallFinish?: WallFinishType;
+  floorFinish?: FloorFinishType;
+  color?: string;
+  presetId?: string;
   description: string;
 }
 
@@ -39,7 +58,8 @@ export interface GenerationResponse {
 export function generatePlanFromPrompt(
   prompt: string,
   project: Project,
-  floorId?: string
+  floorId?: string,
+  selectedEntity?: { type: string; id: string } | null
 ): GenerationResponse {
   const targetFloorId = floorId || project.activeFloorId;
   const floor = project.floors.find(f => f.id === targetFloorId) || project.floors[0];
@@ -72,6 +92,183 @@ export function generatePlanFromPrompt(
       actions: [],
       suggestions: [],
       replaceFloor: true,
+    };
+  }
+
+  // 2b. Contextual Prop Modification (Color, Rotation, Move/Nudge)
+  const isColorIntent = pLower.includes("color") || pLower.includes("colour") || pLower.includes("paint") || pLower.includes("shade") || pLower.includes("make it") || pLower.includes("turn");
+  const isRotationIntent = pLower.includes("rotate") || pLower.includes("turn") || pLower.includes("spin") || pLower.includes("angle") || pLower.includes("orientation");
+  const isMoveIntent = pLower.includes("move") || pLower.includes("shift") || pLower.includes("nudge") || pLower.includes("slide") || pLower.includes("closer") || pLower.includes("further");
+  const isModifyIntent = isColorIntent || isRotationIntent || isMoveIntent || pLower.includes("change") || pLower.includes("update") || pLower.includes("recolor");
+
+  if (isModifyIntent && !pLower.includes("layout") && !pLower.includes("2bhk") && !pLower.includes("1bhk") && !pLower.includes("duplex")) {
+    let targetProp: Prop | undefined;
+    if (selectedEntity?.type === "prop") {
+      targetProp = floor.props?.find(p => p.id === selectedEntity.id);
+    }
+    if (!targetProp && floor.props && floor.props.length > 0) {
+      if (pLower.includes("sofa") || pLower.includes("couch") || pLower.includes("sectional")) {
+        targetProp = floor.props.find(p => p.category === "living" || p.propType === "sofa");
+      } else if (pLower.includes("bed") || pLower.includes("mattress")) {
+        targetProp = floor.props.find(p => p.category === "bedroom" || p.propType === "bed");
+      } else if (pLower.includes("tv") || pLower.includes("screen")) {
+        targetProp = floor.props.find(p => p.category === "entertainment" || p.propType === "tv");
+      } else if (pLower.includes("dining") || pLower.includes("table")) {
+        targetProp = floor.props.find(p => p.category === "dining");
+      } else if (pLower.includes("chair") || pLower.includes("armchair")) {
+        targetProp = floor.props.find(p => p.category === "living");
+      } else if (selectedEntity) {
+        targetProp = floor.props.find(p => p.id === selectedEntity.id);
+      }
+    }
+
+    if (targetProp) {
+      const updates: Partial<Prop> = {};
+      const changesList: string[] = [];
+
+      // Color extraction
+      if (pLower.includes("emerald") || pLower.includes("dark green") || pLower.includes("green")) {
+        updates.color = "#065f46";
+        changesList.push("finish to Emerald Green");
+      } else if (pLower.includes("navy") || pLower.includes("royal blue") || pLower.includes("blue")) {
+        updates.color = "#1e3a8a";
+        changesList.push("finish to Royal Navy");
+      } else if (pLower.includes("beige") || pLower.includes("cream") || pLower.includes("linen")) {
+        updates.color = "#d6d3d1";
+        changesList.push("finish to Oatmeal Linen");
+      } else if (pLower.includes("black") || pLower.includes("charcoal")) {
+        updates.color = "#1e293b";
+        changesList.push("finish to Matte Charcoal");
+      } else if (pLower.includes("white") || pLower.includes("ivory")) {
+        updates.color = "#f8fafc";
+        changesList.push("finish to Pure White");
+      } else if (pLower.includes("terracotta") || pLower.includes("rust") || pLower.includes("orange")) {
+        updates.color = "#c2410c";
+        changesList.push("finish to Terracotta");
+      } else if (pLower.includes("gray") || pLower.includes("grey")) {
+        updates.color = "#64748b";
+        changesList.push("finish to Slate Gray");
+      }
+
+      // Rotation extraction
+      if (isRotationIntent) {
+        let deltaRad = Math.PI / 4;
+        if (pLower.includes("90")) deltaRad = Math.PI / 2;
+        else if (pLower.includes("180")) deltaRad = Math.PI;
+        else if (pLower.includes("45")) deltaRad = Math.PI / 4;
+        else if (pLower.includes("30")) deltaRad = Math.PI / 6;
+        else if (pLower.includes("60")) deltaRad = Math.PI / 3;
+
+        const currentRot = targetProp.rotation || 0;
+        updates.rotation = (currentRot + deltaRad) % (2 * Math.PI);
+        changesList.push(`rotation by ${Math.round((deltaRad * 180) / Math.PI)}°`);
+      }
+
+      // Position nudge extraction
+      if (isMoveIntent) {
+        const step = 300;
+        const curX = targetProp.position.x;
+        const curY = targetProp.position.y;
+        let newX = curX;
+        let newY = curY;
+
+        if (pLower.includes("left") || pLower.includes("west")) newX -= step;
+        else if (pLower.includes("right") || pLower.includes("east")) newX += step;
+        else if (pLower.includes("up") || pLower.includes("north") || pLower.includes("forward")) newY -= step;
+        else if (pLower.includes("down") || pLower.includes("south") || pLower.includes("back")) newY += step;
+        else { newX += 200; }
+
+        updates.position = { x: newX, y: newY };
+        changesList.push(`position nudged towards requested vector`);
+      }
+
+      if (Object.keys(updates).length > 0) {
+        actions.push({
+          type: "update_prop",
+          floorId: floor.id,
+          propId: targetProp.id,
+          propUpdates: updates,
+          description: `Updated ${targetProp.name}: ${changesList.join(", ")}`,
+        });
+        return {
+          message: `Updated ${targetProp.name}: ${changesList.join(", ")}. Changes reflected in 2D and 3D immediately.`,
+          actions,
+          suggestions: [],
+        };
+      }
+    }
+  }
+
+  // 2c. Architectural Design Preset Application
+  const isApplyPresetIntent = 
+    !pLower.includes("tell me") && 
+    !pLower.includes("what is") && 
+    !pLower.includes("explain") && 
+    (pLower.includes("apply") || pLower.includes("switch to") || pLower.includes("set style") || pLower.includes("use preset") || pLower.includes("change style"));
+  if (isApplyPresetIntent) {
+    const matchedPreset = Object.values(ARCHITECTURAL_DESIGN_PRESETS).find(p => 
+      pLower.includes(p.id.replace(/_/g, " ")) || pLower.includes(p.name.toLowerCase()) || pLower.includes(p.id)
+    );
+
+    if (matchedPreset) {
+      actions.push({
+        type: "apply_preset",
+        floorId: floor.id,
+        presetId: matchedPreset.id,
+        description: `Apply ${matchedPreset.name} architectural preset across all levels`,
+      });
+      return {
+        message: `Applied ${matchedPreset.name} style preset across all levels.\n• Wall Finish: ${matchedPreset.wallFinish.replace(/_/g, " ")}\n• Flooring: ${matchedPreset.floorFinish.replace(/_/g, " ")}\n• Recommended Materials: ${matchedPreset.recommendedMaterials.join(" • ")}.`,
+        actions,
+        suggestions: [],
+      };
+    }
+  }
+
+  // 2d. Bulk Wall Finish / Paint Modification
+  if ((pLower.includes("wall") || pLower.includes("walls")) && (pLower.includes("finish") || pLower.includes("paint") || pLower.includes("plaster") || pLower.includes("limewash") || pLower.includes("brick"))) {
+    let chosenFinish: WallFinishType = "white_plaster";
+    let chosenHex = "#ffffff";
+
+    if (pLower.includes("venetian") || pLower.includes("greige") || pLower.includes("warm")) { chosenFinish = "warm_greige"; chosenHex = "#e7e5e4"; }
+    else if (pLower.includes("limewash") || pLower.includes("white")) { chosenFinish = "white_plaster"; chosenHex = "#fafaf9"; }
+    else if (pLower.includes("concrete") || pLower.includes("stucco") || pLower.includes("charcoal") || pLower.includes("dark")) { chosenFinish = "charcoal_slate"; chosenHex = "#1e293b"; }
+    else if (pLower.includes("brick")) { chosenFinish = "exposed_brick"; chosenHex = "#b91c1c"; }
+
+    actions.push({
+      type: "update_wall_finish",
+      floorId: floor.id,
+      wallFinish: chosenFinish,
+      color: chosenHex,
+      description: `Update wall finish to ${chosenFinish.replace(/_/g, " ")}`,
+    });
+    return {
+      message: `Updated all walls on ${floor.name} to ${chosenFinish.replace(/_/g, " ")} (${chosenHex}). PBR shaders synchronized with natural daylight.`,
+      actions,
+      suggestions: [],
+    };
+  }
+
+  // 2e. Bulk Flooring Finish Modification
+  if ((pLower.includes("floor") || pLower.includes("flooring")) && (pLower.includes("finish") || pLower.includes("hardwood") || pLower.includes("parquet") || pLower.includes("marble") || pLower.includes("tile") || pLower.includes("terrazzo") || pLower.includes("concrete"))) {
+    let chosenFloor: FloorFinishType = "teak_hardwood";
+
+    if (pLower.includes("herringbone") || pLower.includes("parquet") || pLower.includes("oak")) chosenFloor = "teak_hardwood";
+    else if (pLower.includes("marble") || pLower.includes("calacatta") || pLower.includes("italian")) chosenFloor = "italian_marble";
+    else if (pLower.includes("concrete") || pLower.includes("polished")) chosenFloor = "polished_concrete";
+    else if (pLower.includes("slate") || pLower.includes("grey tile") || pLower.includes("tile")) chosenFloor = "slate_ceramic_tile";
+    else if (pLower.includes("terrazzo")) chosenFloor = "terrazzo";
+
+    actions.push({
+      type: "update_floor_finish",
+      floorId: floor.id,
+      floorFinish: chosenFloor,
+      description: `Update floor finish to ${chosenFloor.replace(/_/g, " ")}`,
+    });
+    return {
+      message: `Updated all room floor finishes on ${floor.name} to ${chosenFloor.replace(/_/g, " ")}. Specular reflections and normal maps applied.`,
+      actions,
+      suggestions: [],
     };
   }
 

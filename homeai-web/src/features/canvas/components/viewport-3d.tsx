@@ -41,7 +41,7 @@ import { v4 as uuidv4 } from 'uuid';
 export function Viewport3D() {
   const containerRef = useRef<HTMLDivElement>(null);
   const { currentProject, addProp, deleteProp, updatePropCustomization } = useProjectStore();
-  const { setViewMode, selectSubElement } = useCanvasStore();
+  const { setViewMode, selectSubElement, walkthroughActive, setWalkthroughActive } = useCanvasStore();
 
   const [selected3DEntity, setSelected3DEntity] = useState<Selected3DEntity | null>(null);
 
@@ -57,8 +57,9 @@ export function Viewport3D() {
   const [floorFinish, setFloorFinish] = useState<FloorFinishType>('teak_hardwood');
   const [wallFinish, setWallFinish] = useState<WallFinishType>('white_plaster');
 
-  // Phase 11 & Phase 16: Walkthrough & AI Render Studio
-  const [walkthroughMode, setWalkthroughMode] = useState<boolean>(false);
+  // Phase 11 & Phase 16: Walkthrough & AI Render Studio (Synced directly with global canvas store)
+  const walkthroughMode = walkthroughActive;
+  const setWalkthroughMode = setWalkthroughActive;
   const [currentRoomName, setCurrentRoomName] = useState<string | null>(null);
   const [currentLevelName, setCurrentLevelName] = useState<string>('Ground Floor');
   const [currentLevelElevationM, setCurrentLevelElevationM] = useState<number>(0);
@@ -1574,7 +1575,11 @@ export function Viewport3D() {
 
         {/* First-Person Walkthrough Mode */}
         <button
-          onClick={() => setWalkthroughMode(!walkthroughMode)}
+          onClick={() => {
+            const next = !walkthroughMode;
+            setWalkthroughMode(next);
+            setWalkthroughActive(next);
+          }}
           className={`bg-slate-950/90 backdrop-blur-md border px-3 py-1.5 rounded-md shadow-sm text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
             walkthroughMode ? 'border-emerald-500 bg-emerald-950/50 text-emerald-300' : 'border-slate-700 text-slate-300 hover:text-white'
           }`}

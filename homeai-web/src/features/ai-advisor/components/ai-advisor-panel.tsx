@@ -11,9 +11,17 @@ import { Badge } from '@/components/ui/badge';
 export function AIAdvisorPanel() {
   const { currentProject } = useProjectStore();
   const { messages, isLoading, sendMessage, applySuggestion } = useAIAdvisor(currentProject?.id || '');
-  const { aiAdvisorOpen, setAIAdvisorOpen } = useCanvasStore();
+  const { aiAdvisorOpen, setAIAdvisorOpen, selectedSubElement, selectSubElement } = useCanvasStore();
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const activeFloor = currentProject?.floors.find(
+    (f) => f.id === currentProject.activeFloorId
+  ) || currentProject?.floors[0];
+
+  const selectedProp = selectedSubElement?.type === "prop"
+    ? activeFloor?.props?.find((p) => p.id === selectedSubElement.id)
+    : undefined;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -35,17 +43,17 @@ export function AIAdvisorPanel() {
   const handleSend = (textToSend?: string) => {
     const text = textToSend || input;
     if (!text.trim() || isLoading) return;
-    sendMessage(text, currentProject);
+    sendMessage(text, currentProject, selectedSubElement);
     setInput('');
   };
 
   const quickPills = [
     { label: 'Duplex Villa (G+1)', prompt: 'Build a duplex house with internal staircase and double height living room', icon: <Building2 className="h-3 w-3 text-emerald-600" /> },
     { label: '2BHK Layout', prompt: 'Build a complete 2BHK architectural floor plan with living room, bedrooms, kitchen, and furniture', icon: <LayoutGrid className="h-3 w-3 text-indigo-600" /> },
-    { label: 'Review Layout', prompt: 'Improve layout and review circulation and daylighting', icon: <Sparkles className="h-3 w-3 text-amber-600" /> },
-    { label: 'Design Styles', prompt: 'What architectural design presets and styles do you support?', icon: <Sparkles className="h-3 w-3 text-purple-600" /> },
+    { label: 'Scandinavian Style', prompt: 'Apply Scandinavian design style preset', icon: <Sparkles className="h-3 w-3 text-emerald-600" /> },
+    { label: 'Japandi Zen', prompt: 'Apply Japandi design style preset', icon: <Sparkles className="h-3 w-3 text-amber-600" /> },
     { label: '75" TV + Sofa', prompt: 'Add a 75-inch TV and modern gray L-shaped sofa to the Living Room', icon: <Tv className="h-3 w-3 text-sky-600" /> },
-    { label: 'King Bed', prompt: 'Place a King size bed in the bedroom with nightstand clearance', icon: <BedDouble className="h-3 w-3 text-purple-600" /> },
+    { label: 'King Bed Suite', prompt: 'Place a King size bed in the bedroom with nightstand clearance', icon: <BedDouble className="h-3 w-3 text-purple-600" /> },
     { label: 'Audit Codes', prompt: 'Audit my floor plan for NBC/IBC codes and natural daylight', icon: <ShieldAlert className="h-3 w-3 text-red-600" /> },
   ];
 
@@ -179,6 +187,89 @@ export function AIAdvisorPanel() {
 
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Contextual Action Bar for Selected Entity */}
+      {selectedProp && (
+        <div className="px-3 py-1.5 bg-indigo-50/90 border-t border-indigo-200/80 flex items-center justify-between gap-1 text-[11px] text-indigo-950 font-medium shrink-0 animate-in fade-in duration-200">
+          <div className="flex items-center gap-1.5 truncate">
+            <Sparkles className="h-3 w-3 text-indigo-600 shrink-0" />
+            <span className="truncate">Selected: <strong>{selectedProp.name}</strong></span>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => handleSend("Change color to emerald green")}
+              className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded text-[10px] font-semibold hover:bg-emerald-200 cursor-pointer"
+              title="Change to Emerald Green"
+            >
+              Emerald
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSend("Change color to royal navy")}
+              className="px-1.5 py-0.5 bg-blue-100 text-blue-800 border border-blue-300 rounded text-[10px] font-semibold hover:bg-blue-200 cursor-pointer"
+              title="Change to Royal Navy"
+            >
+              Navy
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSend("Rotate 45 degrees")}
+              className="px-1.5 py-0.5 bg-slate-200 text-slate-800 border border-slate-300 rounded text-[10px] font-semibold hover:bg-slate-300 cursor-pointer"
+              title="Rotate 45°"
+            >
+              Rotate 45°
+            </button>
+            <button
+              type="button"
+              onClick={() => selectSubElement(null)}
+              className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer ml-1 text-sm leading-none"
+              title="Deselect"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
+      {selectedSubElement && selectedSubElement.type === "wall" && (
+        <div className="px-3 py-1.5 bg-amber-50/90 border-t border-amber-200/80 flex items-center justify-between gap-1 text-[11px] text-amber-950 font-medium shrink-0 animate-in fade-in duration-200">
+          <div className="flex items-center gap-1.5 truncate">
+            <Sparkles className="h-3 w-3 text-amber-600 shrink-0" />
+            <span>Selected Wall Finish:</span>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => handleSend("Change wall finish to venetian plaster")}
+              className="px-1.5 py-0.5 bg-white border border-amber-300 text-amber-900 rounded text-[10px] font-semibold hover:bg-amber-100 cursor-pointer"
+            >
+              Venetian
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSend("Change wall finish to limewash")}
+              className="px-1.5 py-0.5 bg-white border border-amber-300 text-amber-900 rounded text-[10px] font-semibold hover:bg-amber-100 cursor-pointer"
+            >
+              Limewash
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSend("Change wall finish to dark charcoal")}
+              className="px-1.5 py-0.5 bg-slate-900 text-white rounded text-[10px] font-semibold hover:bg-slate-800 cursor-pointer"
+            >
+              Charcoal
+            </button>
+            <button
+              type="button"
+              onClick={() => selectSubElement(null)}
+              className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer ml-1 text-sm leading-none"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Quick Prompt Pills */}
       <div className="px-3 py-2 border-t border-slate-100 bg-slate-50 flex flex-wrap gap-1.5 shrink-0">

@@ -4,7 +4,7 @@ import { Project, Wall, Room, Door, Window, Floor, Point2D, Prop, Staircase, Sla
 import { PlanGenerationAction } from '@/core/ai/plan-generator';
 import { projectRepository } from '@/infrastructure/persistence/local-storage-project-repository';
 import { autoDetectRooms, polygonArea } from '@/core/geometry/room-utils';
-import { ARCHITECTURAL_DESIGN_PRESETS } from '@/core/geometry/design-presets';
+import { ARCHITECTURAL_DESIGN_PRESETS, applyDesignPresetToProject } from '@/core/geometry/design-presets';
 import { useCanvasStore } from './canvas-store';
 
 interface ProjectState {
@@ -544,6 +544,22 @@ export const useProjectStore = create<ProjectState & ProjectActions>()(
         } else if (act.type === 'add_column' && act.column) {
           if (!curFloor.columns) curFloor.columns = [];
           curFloor.columns.push(act.column);
+        } else if (act.type === 'update_prop' && act.propId) {
+          const propToUpdate = curFloor.props?.find(p => p.id === act.propId);
+          if (propToUpdate && act.propUpdates) {
+            Object.assign(propToUpdate, act.propUpdates);
+          }
+        } else if (act.type === 'update_wall_finish' && act.wallFinish) {
+          curFloor.walls.forEach(w => {
+            w.finishId = act.wallFinish;
+            if (act.color) w.colorHex = act.color;
+          });
+        } else if (act.type === 'update_floor_finish' && act.floorFinish) {
+          curFloor.rooms.forEach(r => {
+            r.floorFinishId = act.floorFinish;
+          });
+        } else if (act.type === 'apply_preset' && act.presetId && state.currentProject) {
+          applyDesignPresetToProject(state.currentProject, act.presetId);
         }
       }
       useCanvasStore.getState().markModified(true);

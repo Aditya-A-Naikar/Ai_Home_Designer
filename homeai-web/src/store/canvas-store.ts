@@ -33,6 +33,10 @@ interface CanvasState {
   showUnderlay: boolean;
   leftSidebarOpen: boolean;
   aiAdvisorOpen: boolean;
+  activeStage: number; // 1 to 7 matching reference journey
+  catalogDockOpen: boolean;
+  materialsDockOpen: boolean;
+  walkthroughActive: boolean;
 
   // MEP Layer Visibility
   showMEPElectrical: boolean;
@@ -68,6 +72,10 @@ interface CanvasActions {
   setLeftSidebarOpen: (open: boolean) => void;
   toggleAIAdvisor: () => void;
   setAIAdvisorOpen: (open: boolean) => void;
+  setActiveStage: (stage: number) => void;
+  setCatalogDockOpen: (open: boolean) => void;
+  setMaterialsDockOpen: (open: boolean) => void;
+  setWalkthroughActive: (active: boolean) => void;
 
   // MEP Toggles
   toggleMEPElectrical: () => void;
@@ -104,6 +112,10 @@ export const useCanvasStore = create<CanvasStore>()(
       showUnderlay: true,
       leftSidebarOpen: true,
       aiAdvisorOpen: true,
+      activeStage: 4,
+      catalogDockOpen: true,
+      materialsDockOpen: true,
+      walkthroughActive: false,
 
       showMEPElectrical: false,
       showMEPPlumbing: false,
@@ -150,6 +162,10 @@ export const useCanvasStore = create<CanvasStore>()(
       setLeftSidebarOpen: (open) => set((state) => { state.leftSidebarOpen = open; }),
       toggleAIAdvisor: () => set((state) => { state.aiAdvisorOpen = !state.aiAdvisorOpen; }),
       setAIAdvisorOpen: (open) => set((state) => { state.aiAdvisorOpen = open; }),
+      setActiveStage: (stage) => set((state) => { state.activeStage = stage; }),
+      setCatalogDockOpen: (open) => set((state) => { state.catalogDockOpen = open; }),
+      setMaterialsDockOpen: (open) => set((state) => { state.materialsDockOpen = open; }),
+      setWalkthroughActive: (active) => set((state) => { state.walkthroughActive = active; }),
 
       toggleMEPElectrical: () => set((state) => { state.showMEPElectrical = !state.showMEPElectrical; }),
       toggleMEPPlumbing: () => set((state) => { state.showMEPPlumbing = !state.showMEPPlumbing; }),

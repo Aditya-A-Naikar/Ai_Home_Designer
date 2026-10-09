@@ -52,7 +52,7 @@ export function useAIAdvisor(projectId: string) {
     }
   };
 
-  const sendMessage = async (content: string, projectContext: unknown) => {
+  const sendMessage = async (content: string, projectContext: unknown, selectedEntity?: { type: string; id: string } | null) => {
     const userMsg: AIMessage = {
       id: uuidv4(),
       role: 'user',
@@ -63,11 +63,13 @@ export function useAIAdvisor(projectId: string) {
     setMessages(prev => [...prev, userMsg]);
     setIsLoading(true);
     
+    const entity = selectedEntity !== undefined ? selectedEntity : useCanvasStore.getState().selectedSubElement;
+
     try {
       const res = await fetch('/api/ai/advise', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userMessage: content, projectContext, projectId })
+        body: JSON.stringify({ userMessage: content, projectContext, projectId, selectedEntity: entity })
       });
       
       const data = await res.json();

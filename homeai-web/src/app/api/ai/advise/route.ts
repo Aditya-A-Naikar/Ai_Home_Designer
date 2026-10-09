@@ -5,7 +5,7 @@ import { Project } from '@/core/domain/types';
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { userMessage, projectContext } = body;
+    const { userMessage, projectContext, selectedEntity } = body;
     
     if (!projectContext) {
       return NextResponse.json({
@@ -16,7 +16,7 @@ export async function POST(req: Request) {
     }
 
     const project = projectContext as Project;
-    const generationResult = generatePlanFromPrompt(userMessage || "audit", project);
+    const generationResult = generatePlanFromPrompt(userMessage || "audit", project, undefined, selectedEntity);
 
     return NextResponse.json({
       message: generationResult.message,
