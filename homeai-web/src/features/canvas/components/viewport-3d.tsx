@@ -24,7 +24,9 @@ import {
   FLOOR_FINISHES, 
   WALL_FINISHES, 
   FloorFinishType, 
-  WallFinishType 
+  WallFinishType,
+  getFloorPBRTextures,
+  getWallPBRTextures 
 } from '@/core/geometry/pbr-materials';
 import { Door, Window, Staircase } from '@/core/domain/types';
 import { isPointInPolygon } from '@/core/geometry/room-utils';
@@ -52,6 +54,9 @@ export function Viewport3D() {
   // Phase 11 & Phase 16: Walkthrough & AI Render Studio
   const [walkthroughMode, setWalkthroughMode] = useState<boolean>(false);
   const [currentRoomName, setCurrentRoomName] = useState<string | null>(null);
+  const [currentLevelName, setCurrentLevelName] = useState<string>('Ground Floor');
+  const [currentLevelElevationM, setCurrentLevelElevationM] = useState<number>(0);
+  const [isPointerLocked, setIsPointerLocked] = useState<boolean>(false);
   const [showRenderStudio, setShowRenderStudio] = useState<boolean>(false);
   const [activeCanvas, setActiveCanvas] = useState<HTMLCanvasElement | null>(null);
   const walkthroughControllerRef = useRef<WalkthroughController | null>(null);
@@ -186,17 +191,24 @@ export function Viewport3D() {
     // 7. PBR Architectural Materials
     const activeWallSpec = WALL_FINISHES[wallFinish];
     const activeFloorSpec = FLOOR_FINISHES[floorFinish];
+    const floorTextures = getFloorPBRTextures(floorFinish);
+    const wallTextures = getWallPBRTextures(wallFinish);
 
     const wallExteriorMat = new THREE.MeshStandardMaterial({
       color: activeWallSpec.colorHex,
       roughness: activeWallSpec.roughness,
       metalness: activeWallSpec.metalness,
+      map: wallTextures.map || null,
+      bumpMap: wallTextures.bumpMap || null,
+      bumpScale: wallTextures.bumpScale || 0.005,
     });
 
     const wallInteriorMat = new THREE.MeshStandardMaterial({
       color: activeWallSpec.colorHex,
       roughness: Math.min(1, activeWallSpec.roughness + 0.05),
       metalness: activeWallSpec.metalness,
+      bumpMap: wallTextures.bumpMap || null,
+      bumpScale: (wallTextures.bumpScale || 0.005) * 0.7,
     });
 
     const columnMat = new THREE.MeshStandardMaterial({
@@ -225,6 +237,9 @@ export function Viewport3D() {
       color: activeFloorSpec.id === 'teak_hardwood' ? 0xc27838 : 0x78350f,
       roughness: 0.45,
       metalness: 0.05,
+      map: floorTextures.map || null,
+      bumpMap: floorTextures.bumpMap || null,
+      bumpScale: 0.004,
     });
 
     const riserMat = new THREE.MeshStandardMaterial({
@@ -300,11 +315,27 @@ export function Viewport3D() {
       leaf.castShadow = true;
       group.add(leaf);
 
-      // Brushed Brass Lever Handle
+      // Brushed Brass Lever Handle & Backplate
+      const backplate = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.16, 0.005), brassHandleMat);
+      backplate.position.set(widthM / 2 - jambW - 0.08, 0.95, leafThick / 2 + 0.002);
+      group.add(backplate);
+
       const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.12, 12), brassHandleMat);
       handle.rotation.z = Math.PI / 2;
       handle.position.set(widthM / 2 - jambW - 0.08, 0.95, leafThick / 2 + 0.02);
       group.add(handle);
+
+      // Stainless Steel Butt Hinges
+      [0.25, heightM - 0.25].forEach((hingeY) => {
+        const hinge = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.07, 12), frameMat);
+        hinge.position.set(-widthM / 2 + jambW + 0.005, hingeY, -0.01);
+        group.add(hinge);
+      });
+
+      // Protective Kick Plate along bottom of door leaf
+      const kickPlate = new THREE.Mesh(new THREE.BoxGeometry(leafW - 0.02, 0.08, 0.003), brassHandleMat);
+      kickPlate.position.set(0, 0.05, leafThick / 2 + 0.001);
+      group.add(kickPlate);
 
       return group;
     }
@@ -358,6 +389,16 @@ export function Viewport3D() {
       sillMesh.position.set(0, -0.02, sillDepth / 2 - thicknessM / 4);
       sillMesh.castShadow = true;
       group.add(sillMesh);
+
+      // Exterior Concrete Sunshade / Chajja (Lintel projection)
+      const chajjaDepth = 0.35;
+      const chajja = new THREE.Mesh(
+        new THREE.BoxGeometry(widthM + 0.16, 0.05, chajjaDepth),
+        columnMat
+      );
+      chajja.position.set(0, heightM + 0.025, chajjaDepth / 2 - thicknessM / 4);
+      chajja.castShadow = true;
+      group.add(chajja);
 
       return group;
     }
@@ -602,6 +643,10 @@ export function Viewport3D() {
           color: activeFloorSpec.colorHex,
           roughness: activeFloorSpec.roughness,
           metalness: activeFloorSpec.metalness,
+          map: floorTextures.map || null,
+          roughnessMap: floorTextures.roughnessMap || null,
+          bumpMap: floorTextures.bumpMap || null,
+          bumpScale: floorTextures.bumpScale || 0.004,
         });
 
         const slabGeo = new THREE.ExtrudeGeometry(shape, {
@@ -614,6 +659,91 @@ export function Viewport3D() {
         slabMesh.position.y = floorElevationM + 0.01;
         slabMesh.receiveShadow = true;
         scene.add(slabMesh);
+
+        // Ceiling Plaster Soffit for multi-story buildings (bottom face of upper floor slabs)
+        if (floorElevationM > 0.05) {
+          const ceilingMat = new THREE.MeshStandardMaterial({
+            color: 0xfdfdfd,
+            roughness: 0.9,
+            metalness: 0.02,
+          });
+          const soffitGeo = new THREE.ShapeGeometry(shape);
+          const soffitMesh = new THREE.Mesh(soffitGeo, ceilingMat);
+          soffitMesh.rotation.x = Math.PI / 2;
+          soffitMesh.position.y = floorElevationM - 0.11;
+          scene.add(soffitMesh);
+        }
+
+        // Warm LED Recessed Ceiling Downlight in center of room
+        const roomCenter = room.polygon.reduce(
+          (acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }),
+          { x: 0, y: 0 }
+        );
+        const rLen = Math.max(1, room.polygon.length);
+        const rcX = (roomCenter.x / rLen / 1000) - centerOffset.x;
+        const rcZ = (roomCenter.y / rLen / 1000) - centerOffset.z;
+
+        const downlight = new THREE.PointLight(
+          0xffedd5,
+          cutawayMode ? 0.35 : 0.85,
+          9,
+          2
+        );
+        downlight.position.set(rcX, floorElevationM + (cutawayMode ? 1.15 : 2.65), rcZ);
+        scene.add(downlight);
+
+        // Ceiling Fixture Trim Ring
+        if (!cutawayMode) {
+          const fixtureRing = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.08, 0.08, 0.02, 16),
+            frameMat
+          );
+          fixtureRing.position.set(rcX, floorElevationM + 2.78, rcZ);
+          scene.add(fixtureRing);
+        }
+
+        // Balcony & Open Terrace Glass Balustrade (1.0m height)
+        const isBalcony = /balcony|terrace|patio|deck|verandah/i.test(room.name);
+        if (isBalcony && room.polygon.length >= 3) {
+          for (let i = 0; i < room.polygon.length; i++) {
+            const p1 = room.polygon[i];
+            const p2 = room.polygon[(i + 1) % room.polygon.length];
+            const p1x = p1.x / 1000 - centerOffset.x;
+            const p1z = p1.y / 1000 - centerOffset.z;
+            const p2x = p2.x / 1000 - centerOffset.x;
+            const p2z = p2.y / 1000 - centerOffset.z;
+
+            // Check if there is already a wall along this edge
+            const midX = (p1x + p2x) / 2;
+            const midZ = (p1z + p2z) / 2;
+            const hasWall = floor.walls.some(w => {
+              const wsx = w.start.x / 1000 - centerOffset.x;
+              const wsz = w.start.y / 1000 - centerOffset.z;
+              const wex = w.end.x / 1000 - centerOffset.x;
+              const wez = w.end.y / 1000 - centerOffset.z;
+              const wmx = (wsx + wex) / 2;
+              const wmz = (wsz + wez) / 2;
+              return Math.hypot(midX - wmx, midZ - wmz) < 0.35;
+            });
+
+            if (!hasWall) {
+              const bdx = p2x - p1x;
+              const bdz = p2z - p1z;
+              const bLen = Math.hypot(bdx, bdz);
+              const bAng = Math.atan2(bdz, bdx);
+
+              const bGlass = new THREE.Mesh(new THREE.BoxGeometry(bLen, 0.95, 0.015), glassMat);
+              bGlass.position.set(midX, floorElevationM + 0.48, midZ);
+              bGlass.rotation.y = -bAng;
+              scene.add(bGlass);
+
+              const bRail = new THREE.Mesh(new THREE.BoxGeometry(bLen, 0.04, 0.04), frameMat);
+              bRail.position.set(midX, floorElevationM + 0.98, midZ);
+              bRail.rotation.y = -bAng;
+              scene.add(bRail);
+            }
+          }
+        }
       });
 
       // B. Structural RC Columns
@@ -876,6 +1006,125 @@ export function Viewport3D() {
       });
     });
 
+    // G. ROOF TERRACE & PARAPET COPING (Generated in Full-Height 2.8m Mode)
+    if (!cutawayMode && floorsToRender.length > 0) {
+      const topFloor = floorsToRender.reduce((prev, curr) => 
+        (curr.elevation || 0) > (prev.elevation || 0) ? curr : prev, floorsToRender[0]);
+
+      if (topFloor) {
+        const topElevationM = (topFloor.elevation || 0) / 1000;
+        const roofElevationM = topElevationM + 2.8;
+
+        const roofSlabMat = new THREE.MeshStandardMaterial({
+          color: 0x94a3b8, // Weatherproof architectural terrace screed
+          roughness: 0.65,
+          metalness: 0.08,
+          map: floorTextures.map || null,
+          bumpMap: floorTextures.bumpMap || null,
+          bumpScale: 0.004,
+        });
+
+        topFloor.rooms.forEach((room) => {
+          if (!room.polygon || room.polygon.length < 3) return;
+
+          const roofShape = new THREE.Shape();
+          room.polygon.forEach((pt, idx) => {
+            const px = (pt.x / 1000) - centerOffset.x;
+            const pz = (pt.y / 1000) - centerOffset.z;
+            if (idx === 0) roofShape.moveTo(px, -pz);
+            else roofShape.lineTo(px, -pz);
+          });
+
+          // Punch hole if top floor has staircase leading up to roof terrace
+          if (topFloor.stairs && topFloor.stairs.length > 0) {
+            topFloor.stairs.forEach(st => {
+              const anchorX = st.position.x / 1000 - centerOffset.x;
+              const anchorZ = st.position.y / 1000 - centerOffset.z;
+              const w = (st.width || 1000) / 1000;
+              const l = (st.length || 2400) / 1000;
+              const rad = ((st.rotation || 0) * Math.PI) / 180;
+              const cos = Math.cos(rad);
+              const sin = Math.sin(rad);
+
+              const corners = [
+                { x: 0, z: 0 },
+                { x: w, z: 0 },
+                { x: w, z: l },
+                { x: 0, z: l },
+              ].map(c => ({
+                x: anchorX + (c.x * cos - c.z * sin),
+                z: anchorZ + (c.x * sin + c.z * cos),
+              }));
+
+              const centerX = (corners[0].x + corners[2].x) / 2;
+              const centerZ = (corners[0].z + corners[2].z) / 2;
+              const ptMm = { x: (centerX + centerOffset.x) * 1000, y: (centerZ + centerOffset.z) * 1000 };
+              if (isPointInPolygon(ptMm, room.polygon)) {
+                const hole = new THREE.Path();
+                hole.moveTo(corners[0].x, -corners[0].z);
+                hole.lineTo(corners[1].x, -corners[1].z);
+                hole.lineTo(corners[2].x, -corners[2].z);
+                hole.lineTo(corners[3].x, -corners[3].z);
+                hole.closePath();
+                roofShape.holes.push(hole);
+              }
+            });
+          }
+
+          const roofSlabGeo = new THREE.ExtrudeGeometry(roofShape, {
+            depth: 0.15,
+            bevelEnabled: false,
+          });
+          const roofSlabMesh = new THREE.Mesh(roofSlabGeo, roofSlabMat);
+          roofSlabMesh.rotation.x = -Math.PI / 2;
+          roofSlabMesh.position.y = roofElevationM;
+          roofSlabMesh.castShadow = true;
+          roofSlabMesh.receiveShadow = true;
+          scene.add(roofSlabMesh);
+        });
+
+        // Parapet Wall (0.9m height) & Coping Stones along Exterior Walls of Top Floor
+        topFloor.walls.forEach(wall => {
+          if (wall.wallType !== 'exterior_bearing') return;
+
+          const sx = wall.start.x / 1000 - centerOffset.x;
+          const sz = wall.start.y / 1000 - centerOffset.z;
+          const ex = wall.end.x / 1000 - centerOffset.x;
+          const ez = wall.end.y / 1000 - centerOffset.z;
+
+          const dx = ex - sx;
+          const dz = ez - sz;
+          const wallLengthM = Math.hypot(dx, dz);
+          if (wallLengthM < 0.1) return;
+
+          const angle = Math.atan2(dz, dx);
+          const thicknessM = 0.15; // 150mm standard parapet thickness
+          const parapetHeightM = 0.9; // 900mm safety parapet height
+
+          const parapetGroup = new THREE.Group();
+          parapetGroup.position.set(sx, roofElevationM, sz);
+          parapetGroup.rotation.y = -angle;
+
+          // Parapet Wall Mesh
+          const pGeo = new THREE.BoxGeometry(wallLengthM, parapetHeightM, thicknessM);
+          const pMesh = new THREE.Mesh(pGeo, wallExteriorMat);
+          pMesh.position.set(wallLengthM / 2, parapetHeightM / 2, 0);
+          pMesh.castShadow = true;
+          pMesh.receiveShadow = true;
+          parapetGroup.add(pMesh);
+
+          // Coping Stone Cap (weather drip overhang on both sides)
+          const capGeo = new THREE.BoxGeometry(wallLengthM, 0.05, thicknessM + 0.04);
+          const capMesh = new THREE.Mesh(capGeo, wallCapMat);
+          capMesh.position.set(wallLengthM / 2, parapetHeightM + 0.025, 0);
+          capMesh.castShadow = true;
+          parapetGroup.add(capMesh);
+
+          scene.add(parapetGroup);
+        });
+      }
+    }
+
     // 9. Animation Loop & Walkthrough Updates
     let lastTime = performance.now();
     let animationFrameId: number;
@@ -894,8 +1143,14 @@ export function Viewport3D() {
           minZ: -60,
           maxZ: 60,
         });
-        const activeFloor = currentProject.floors.find((f) => f.id === currentProject.activeFloorId) || currentProject.floors[0];
+        const activeFloor = currentProject.floors.find(
+          (f) => Math.abs((f.elevation || 0) / 1000 - wtController.activeFloorElevationM) < 0.5
+        ) || currentProject.floors[0];
+
         if (activeFloor) {
+          setCurrentLevelName((prev) => (prev !== activeFloor.name ? activeFloor.name : prev));
+          const activeElevM = (activeFloor.elevation || 0) / 1000;
+          setCurrentLevelElevationM((prev) => (Math.abs(prev - activeElevM) > 0.01 ? activeElevM : prev));
           const room = wtController.getCurrentRoom(activeFloor.rooms, centerOffset, currentProject.floors);
           setCurrentRoomName((prev) => (prev !== room ? room : prev));
         }
@@ -927,23 +1182,39 @@ export function Viewport3D() {
     };
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (!walkthroughMode || !isMouseDown) return;
-      const dx = e.clientX - lastMouseX;
-      const dy = e.clientY - lastMouseY;
-      lastMouseX = e.clientX;
-      lastMouseY = e.clientY;
-      wtController.handleMouseMove(dx, dy);
+      if (!walkthroughMode) return;
+      if (document.pointerLockElement === container) {
+        wtController.handleMouseMove(e.movementX, e.movementY);
+      } else if (isMouseDown) {
+        const dx = e.clientX - lastMouseX;
+        const dy = e.clientY - lastMouseY;
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+        wtController.handleMouseMove(dx, dy);
+      }
     };
 
     const handleMouseUp = () => {
       isMouseDown = false;
     };
 
+    const handleContainerClick = () => {
+      if (walkthroughMode && document.pointerLockElement !== container) {
+        container.requestPointerLock?.();
+      }
+    };
+
+    const handlePointerLockChange = () => {
+      setIsPointerLocked(document.pointerLockElement === container);
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     container.addEventListener('mousedown', handleMouseDown);
+    container.addEventListener('click', handleContainerClick);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('pointerlockchange', handlePointerLockChange);
 
     // 10. Resize Handling
     const handleResize = () => {
@@ -965,8 +1236,13 @@ export function Viewport3D() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       container.removeEventListener('mousedown', handleMouseDown);
+      container.removeEventListener('click', handleContainerClick);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('pointerlockchange', handlePointerLockChange);
+      if (document.pointerLockElement === container) {
+        document.exitPointerLock?.();
+      }
       renderer.dispose();
       controls.dispose();
       scene.clear();
@@ -1293,28 +1569,46 @@ export function Viewport3D() {
         </div>
       )}
 
+      {/* First-Person Walkthrough Reticle Crosshair */}
+      {walkthroughMode && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+          <div className="relative w-4 h-4 flex items-center justify-center opacity-70">
+            <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full" />
+            <div className="absolute w-4 h-4 border border-cyan-400/40 rounded-full" />
+          </div>
+        </div>
+      )}
+
       {/* Bottom Floating Hint & Compass Watermark / Walkthrough HUD */}
       {walkthroughMode ? (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-slate-950/95 backdrop-blur-md border border-slate-700 px-5 py-2.5 rounded-lg shadow-2xl text-xs font-mono text-slate-200 flex items-center gap-4 z-30 pointer-events-auto">
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-slate-950/95 backdrop-blur-md border border-slate-700 px-5 py-2.5 rounded-lg shadow-2xl text-xs font-mono text-slate-200 flex flex-wrap items-center justify-center gap-3.5 z-30 pointer-events-auto">
           <div className="flex items-center gap-1.5 text-cyan-400 font-bold">
             <Footprints className="h-4 w-4" />
-            <span>WALKTHROUGH ACTIVE</span>
+            <span>WALKTHROUGH</span>
           </div>
-          <span className="text-slate-600">|</span>
-          <span>[W][A][S][D] / Arrows: Walk</span>
-          <span className="text-slate-600">|</span>
-          <span>Shift: Sprint</span>
-          <span className="text-slate-600">|</span>
-          <span>Drag: Look</span>
+          <span className="text-slate-700">|</span>
+          <span className="text-cyan-300 font-semibold bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/40">
+            {currentLevelName} ({currentLevelElevationM.toFixed(1)}m)
+          </span>
           {currentRoomName && (
-            <>
-              <span className="text-slate-600">|</span>
-              <span className="text-emerald-400 font-bold">Room: {currentRoomName}</span>
-            </>
+            <span className="text-emerald-400 font-semibold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/40">
+              {currentRoomName}
+            </span>
           )}
+          <span className="text-slate-700">|</span>
+          <span className="text-slate-300 text-[11px] hidden sm:inline">
+            [W][A][S][D] / Arrows • Shift: Sprint
+          </span>
+          <span className="text-slate-700 hidden sm:inline">|</span>
+          <span className={`text-[11px] px-2 py-0.5 rounded font-medium ${isPointerLocked ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-slate-800 text-slate-400'}`}>
+            {isPointerLocked ? 'Mouse Locked (Esc to unlock)' : 'Click Viewport for Mouse-Look'}
+          </span>
           <button
-            onClick={() => setWalkthroughMode(false)}
-            className="ml-2 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold cursor-pointer transition-colors"
+            onClick={() => {
+              if (document.pointerLockElement) document.exitPointerLock?.();
+              setWalkthroughMode(false);
+            }}
+            className="ml-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold cursor-pointer transition-colors border border-slate-700"
           >
             Exit (Orbit)
           </button>
