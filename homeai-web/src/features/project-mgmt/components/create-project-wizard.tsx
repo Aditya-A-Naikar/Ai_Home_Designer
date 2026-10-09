@@ -23,6 +23,9 @@ import {
 import { toMillimeters, formatArea } from "@/core/units/converter";
 import { createProject } from "@/core/domain/project-factory";
 import { projectRepository } from "@/infrastructure/persistence/local-storage-project-repository";
+import { AiProjectDiscovery } from "./ai-project-discovery";
+import { StructuredProjectMemory } from "@/core/ai/conversational-intake";
+import { Sparkles } from "lucide-react";
 
 const typologyOptions: { 
   id: BuildingTypology; 
@@ -69,6 +72,7 @@ const spaceAmenities = [
 
 export function CreateProjectWizard() {
   const router = useRouter();
+  const [intakeMode, setIntakeMode] = useState<"ai_discovery" | "manual_cad">("ai_discovery");
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -231,8 +235,31 @@ export function CreateProjectWizard() {
   const buildableWidth = Math.max(0, plotWidth - sideSetback * 2);
   const buildableDepth = Math.max(0, plotDepth - frontSetback - rearSetback);
   const buildableAreaSqMm = toMillimeters(buildableWidth, preferredUnit) * toMillimeters(buildableDepth, preferredUnit);
-
   const isDuplexSelected = typology === "duplex_vertical" || typology === "duplex_side_by_side";
+
+  const handleSwitchToManual = (extractedMemory: StructuredProjectMemory) => {
+    if (extractedMemory.projectName) setName(extractedMemory.projectName);
+    setTypology(extractedMemory.typology);
+    setFloorsCount(extractedMemory.floorsCount);
+    setBhkCount(extractedMemory.bhkCount);
+    setStyle(extractedMemory.architecturalStyle);
+    setRoadFacing(extractedMemory.orientation);
+    setStairType(extractedMemory.stairType);
+    setVaastuCompliant(extractedMemory.vaastuCompliant);
+    setBuildingCode(extractedMemory.buildingCode);
+    setSelectedAmenities(extractedMemory.amenities);
+    setPlotWidth(extractedMemory.plotDimensions.widthM);
+    setPlotDepth(extractedMemory.plotDimensions.depthM);
+    setIntakeMode("manual_cad");
+  };
+
+  if (intakeMode === "ai_discovery") {
+    return (
+      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+        <AiProjectDiscovery onSwitchToManual={handleSwitchToManual} />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
@@ -247,9 +274,19 @@ export function CreateProjectWizard() {
               Create New Architectural Project
             </h1>
           </div>
-          <span className="text-xs font-mono text-slate-400 bg-slate-900 px-3 py-1 rounded border border-slate-800">
-            PHASE {step} OF 4
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIntakeMode("ai_discovery")}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cyan-800/60 bg-cyan-950/40 hover:bg-cyan-900/40 text-xs font-mono text-cyan-300 transition-colors"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              <span>AI Architect Intake</span>
+            </button>
+            <span className="text-xs font-mono text-slate-400 bg-slate-900 px-3 py-1 rounded border border-slate-800">
+              PHASE {step} OF 4
+            </span>
+          </div>
         </div>
 
         {/* Stepper Tabs */}

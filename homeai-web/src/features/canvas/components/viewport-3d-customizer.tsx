@@ -223,6 +223,19 @@ export function Viewport3DCustomizer({
         </div>
       )}
 
+      {/* Keyboard Shortcuts Hint Bar */}
+      {selectedEntity && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 bg-slate-950/90 backdrop-blur-md border border-slate-700 text-slate-300 px-3.5 py-1.5 rounded-full text-[11px] font-mono shadow-xl flex items-center gap-2.5 animate-in fade-in slide-in-from-top-2">
+          <span className="text-cyan-400 font-bold uppercase">{selectedEntity.type} Selected</span>
+          <span className="text-slate-600">•</span>
+          <span><kbd className="bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700 text-white font-bold">R</kbd> Rotate</span>
+          <span className="text-slate-600">•</span>
+          <span><kbd className="bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700 text-white font-bold">Del</kbd> Remove</span>
+          <span className="text-slate-600">•</span>
+          <span><kbd className="bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700 text-white font-bold">Esc</kbd> Deselect</span>
+        </div>
+      )}
+
       {/* FLOATING CONTEXTUAL 3D PROPERTIES PANEL (Appears on click in 3D) */}
       {selectedEntity && (
         <div className="absolute top-16 right-4 z-30 w-80 bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-right-3 duration-200">
@@ -670,7 +683,14 @@ export function Viewport3DCustomizer({
                   .map(([key, preset]) => (
                     <div
                       key={key}
-                      className="border border-slate-200 hover:border-indigo-500 rounded-xl p-3 bg-white hover:bg-indigo-50/20 transition-all flex flex-col justify-between group cursor-pointer shadow-xs"
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('application/json', JSON.stringify({
+                          type: 'furniture-catalog-item',
+                          presetKey: key,
+                        }));
+                      }}
+                      className="border border-slate-200 hover:border-indigo-500 rounded-xl p-3 bg-white hover:bg-indigo-50/20 transition-all flex flex-col justify-between group cursor-grab active:cursor-grabbing shadow-xs"
                       onClick={() => handleAddPropFromCatalog(key)}
                     >
                       <div>
@@ -680,7 +700,7 @@ export function Viewport3DCustomizer({
                             style={{ backgroundColor: preset.defaultColor }} 
                           />
                           <span className="text-[10px] text-slate-400 capitalize">
-                            {preset.propType}
+                            {preset.propType} • Drag to Place
                           </span>
                         </div>
                         <h5 className="text-xs font-bold text-slate-900 group-hover:text-indigo-600 transition-colors line-clamp-1">
@@ -695,7 +715,7 @@ export function Viewport3DCustomizer({
                         className="mt-3 w-full py-1.5 bg-slate-100 group-hover:bg-indigo-600 group-hover:text-white text-slate-700 text-[11px] font-semibold rounded-lg transition-colors flex items-center justify-center gap-1"
                       >
                         <Plus className="h-3 w-3" />
-                        <span>Place in 3D</span>
+                        <span>Place or Drag in 3D</span>
                       </button>
                     </div>
                   ))}
@@ -704,6 +724,43 @@ export function Viewport3DCustomizer({
           </div>
         </div>
       )}
+
+      {/* BOTTOM 3D FURNITURE QUICK-SHELF & DIRECT DRAG DOCK */}
+      <div className="absolute bottom-4 left-4 z-20 flex items-center gap-1.5 bg-slate-950/90 backdrop-blur-md border border-slate-700/80 p-1.5 rounded-xl shadow-xl text-xs font-mono pointer-events-auto">
+        <span className="text-[10px] text-slate-400 uppercase font-bold px-1.5">
+          3D Place:
+        </span>
+        {[
+          { key: 'sofa_3_seater', label: 'Sofa', icon: <Armchair className="h-3 w-3" /> },
+          { key: 'bed_king', label: 'Bed', icon: <BedDouble className="h-3 w-3" /> },
+          { key: 'dining_table_6p', label: 'Dining', icon: <Utensils className="h-3 w-3" /> },
+          { key: 'tv_75_inch', label: 'TV', icon: <Tv className="h-3 w-3" /> },
+        ].map((item) => (
+          <button
+            key={item.key}
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData('application/json', JSON.stringify({
+                type: 'furniture-catalog-item',
+                presetKey: item.key,
+              }));
+            }}
+            onClick={() => handleAddPropFromCatalog(item.key)}
+            className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-indigo-600 text-slate-200 hover:text-white border border-slate-800 hover:border-indigo-500 transition-colors cursor-grab active:cursor-grabbing flex items-center gap-1 font-semibold text-[11px]"
+            title={`Click or Drag ${item.label} directly onto 3D floor plan`}
+          >
+            {item.icon}
+            <span>{item.label}</span>
+          </button>
+        ))}
+        <button
+          onClick={() => setCatalogDrawerOpen(true)}
+          className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
+        >
+          <Plus className="h-3 w-3" />
+          <span>More</span>
+        </button>
+      </div>
     </>
   );
 }

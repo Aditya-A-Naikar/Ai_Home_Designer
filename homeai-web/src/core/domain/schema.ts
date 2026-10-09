@@ -15,6 +15,9 @@ export const ArchitecturalStyleSchema = z.enum([
   "antique",
   "mixed",
   "indian_traditional",
+  "scandinavian",
+  "japandi",
+  "industrial",
 ]);
 
 export const BuildingTypologySchema = z.enum([
@@ -326,6 +329,11 @@ export const ProjectSchema = z.object({
   metadata: ProjectMetadataSchema,
   activeFloorId: z.string(),
   floors: z.array(FloorSchema).min(1, "At least one floor is required"),
+  floorPlanStatus: z.enum(["draft", "under_review", "confirmed"]).optional(),
+  designBaseline: z.any().optional(),
+  designVersion: z.number().optional(),
+  activeDesignPreset: z.string().optional(),
+  aiBrief: z.any().optional(),
 });
 
 export type ProjectInput = z.infer<typeof ProjectSchema>;

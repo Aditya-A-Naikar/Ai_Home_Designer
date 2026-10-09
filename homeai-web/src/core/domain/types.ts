@@ -13,7 +13,10 @@ export type ArchitecturalStyle =
   | "traditional"
   | "antique"
   | "mixed"
-  | "indian_traditional";
+  | "indian_traditional"
+  | "scandinavian"
+  | "japandi"
+  | "industrial";
 
 export type BuildingTypology =
   | "single_family"
@@ -342,6 +345,21 @@ export interface DesignBaseline {
   };
 }
 
+export interface ProjectAiBrief {
+  clientVision: string;
+  targetTypology: BuildingTypology;
+  targetLevels: number;
+  bhkCount: number;
+  bathroomsCount: number;
+  architecturalStyle: ArchitecturalStyle;
+  designPresetId: string;
+  siteOrientation: CompassOrientation;
+  amenities: string[];
+  budgetTier?: "budget" | "moderate" | "premium" | "luxury";
+  consultantNotes: string;
+  generatedAt: string;
+}
+
 export interface Project {
   schemaVersion: 1;
   id: string; // UUID v4
@@ -362,4 +380,5 @@ export interface Project {
   designBaseline?: DesignBaseline;
   designVersion?: number;
   activeDesignPreset?: string;
+  aiBrief?: ProjectAiBrief;
 }

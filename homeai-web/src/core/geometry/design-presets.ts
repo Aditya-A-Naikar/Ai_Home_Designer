@@ -1,4 +1,5 @@
 import { FloorFinishType, WallFinishType } from "./pbr-materials";
+import { Project } from "../domain/types";
 
 export interface DesignPresetSpec {
   id: string;
@@ -103,3 +104,25 @@ export const ARCHITECTURAL_DESIGN_PRESETS: Record<string, DesignPresetSpec> = {
     recommendedMaterials: ["Venetian Terrazzo", "Chalk Mineral Plaster", "Tempered Clear Glass", "Marine-Grade Teak"],
   },
 };
+
+/**
+ * Applies an architectural design preset to all walls and rooms across all floors of a Project.
+ */
+export function applyDesignPresetToProject(project: Project, presetId: string): Project {
+  const preset = ARCHITECTURAL_DESIGN_PRESETS[presetId];
+  if (!preset) return project;
+
+  project.activeDesignPreset = presetId;
+  project.floors.forEach((floor) => {
+    floor.rooms.forEach((r) => {
+      r.floorFinishId = preset.floorFinish;
+      r.wallFinishId = preset.wallFinish;
+    });
+    floor.walls.forEach((w) => {
+      w.finishId = preset.wallFinish;
+      w.colorHex = preset.primaryColor;
+    });
+  });
+
+  return project;
+}

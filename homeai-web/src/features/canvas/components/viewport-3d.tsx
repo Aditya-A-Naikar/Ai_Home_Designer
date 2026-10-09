@@ -34,10 +34,13 @@ import { createProp3DMesh } from '@/core/geometry/furniture-3d';
 import { WalkthroughController } from '@/core/geometry/walkthrough-controller';
 import { AIRenderStudioModal } from './ai-render-studio-modal';
 import { Viewport3DCustomizer, Selected3DEntity } from './viewport-3d-customizer';
+import { PROP_PRESETS } from '@/core/ai/spatial-planner';
+import { Prop } from '@/core/domain/types';
+import { v4 as uuidv4 } from 'uuid';
 
 export function Viewport3D() {
   const containerRef = useRef<HTMLDivElement>(null);
-  const { currentProject } = useProjectStore();
+  const { currentProject, addProp, deleteProp, updatePropCustomization } = useProjectStore();
   const { setViewMode, selectSubElement } = useCanvasStore();
 
   const [selected3DEntity, setSelected3DEntity] = useState<Selected3DEntity | null>(null);
@@ -1223,9 +1226,109 @@ export function Viewport3D() {
     // Keyboard and mouse handlers for First-Person Walkthrough & Raycast Selection
     const handleKeyDown = (e: KeyboardEvent) => {
       wtController.handleKeyDown(e.code);
+
+      // 3D Direct Manipulation Shortcuts (when not in an active text input)
+      const activeTag = (document.activeElement?.tagName || '').toLowerCase();
+      if (activeTag !== 'input' && activeTag !== 'textarea') {
+        if (selected3DEntity && selected3DEntity.type === 'prop') {
+          if (e.key === 'r' || e.key === 'R') {
+            const newRot = ((selected3DEntity.rotation || 0) + 45) % 360;
+            updatePropCustomization(selected3DEntity.floorId, selected3DEntity.id, { rotation: newRot });
+            setSelected3DEntity(prev => prev ? { ...prev, rotation: newRot } : null);
+          } else if (e.key === 'Delete' || e.key === 'Backspace') {
+            deleteProp(selected3DEntity.floorId, selected3DEntity.id);
+            setSelected3DEntity(null);
+            selectSubElement(null);
+          } else if (e.key === 'Escape') {
+            setSelected3DEntity(null);
+            selectSubElement(null);
+          }
+        }
+      }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
       wtController.handleKeyUp(e.code);
+    };
+
+    // 3D Surface Drag-and-Drop Placement from Catalog onto Floor Plane
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'copy';
+      }
+    };
+
+    const handleDrop = (e: DragEvent) => {
+      e.preventDefault();
+      if (!e.dataTransfer || !currentProject) return;
+      const rawData = e.dataTransfer.getData('application/json');
+      if (!rawData) return;
+      try {
+        const payload = JSON.parse(rawData);
+        if (payload.type === 'furniture-catalog-item' && payload.presetKey) {
+          const preset = PROP_PRESETS[payload.presetKey];
+          if (!preset) return;
+
+          const activeFloor = currentProject.floors.find(f => 
+            selectedFloorFilter === 'all' ? f.id === currentProject.activeFloorId : f.id === selectedFloorFilter
+          ) || currentProject.floors[0];
+          if (!activeFloor) return;
+
+          const rect = container.getBoundingClientRect();
+          const mouse = new THREE.Vector2(
+            ((e.clientX - rect.left) / rect.width) * 2 - 1,
+            -((e.clientY - rect.top) / rect.height) * 2 + 1
+          );
+          const raycaster = new THREE.Raycaster();
+          raycaster.setFromCamera(mouse, camera);
+
+          const floorElevM = (activeFloor.elevation || 0) / 1000;
+          const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -floorElevM);
+          const intersection = new THREE.Vector3();
+
+          if (raycaster.ray.intersectPlane(floorPlane, intersection)) {
+            const worldX = Math.round((intersection.x + centerOffset.x) * 1000);
+            const worldY = Math.round((intersection.z + centerOffset.z) * 1000);
+
+            const hitRoom = activeFloor.rooms.find(r => isPointInPolygon({ x: worldX, y: worldY }, r.polygon));
+
+            const newPropId = uuidv4();
+            const newProp: Prop = {
+              id: newPropId,
+              floorId: activeFloor.id,
+              roomId: hitRoom?.id,
+              name: preset.name,
+              category: preset.category,
+              propType: preset.propType,
+              position: { x: worldX, y: worldY },
+              rotation: 0,
+              elevationOffsetMm: 0,
+              color: preset.defaultColor,
+              finishColor: preset.defaultColor,
+              dimensions: {
+                width: preset.dimensions.width,
+                depth: preset.dimensions.depth,
+                height: preset.dimensions.height || 800,
+              },
+              shape: preset.shape,
+            };
+
+            addProp(activeFloor.id, newProp);
+            setSelected3DEntity({
+              type: 'prop',
+              id: newPropId,
+              floorId: activeFloor.id,
+              name: newProp.name,
+              propType: newProp.propType,
+              rotation: 0,
+              position: newProp.position,
+            });
+            selectSubElement({ type: 'prop', id: newPropId });
+          }
+        }
+      } catch (err) {
+        console.error('Drag and drop 3D placement error:', err);
+      }
     };
 
     let isMouseDown = false;
@@ -1309,6 +1412,8 @@ export function Viewport3D() {
     container.addEventListener('click', handleContainerClick);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
+    container.addEventListener('dragover', handleDragOver);
+    container.addEventListener('drop', handleDrop);
     document.addEventListener('pointerlockchange', handlePointerLockChange);
 
     // 10. Resize Handling
@@ -1334,6 +1439,8 @@ export function Viewport3D() {
       container.removeEventListener('click', handleContainerClick);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      container.removeEventListener('dragover', handleDragOver);
+      container.removeEventListener('drop', handleDrop);
       document.removeEventListener('pointerlockchange', handlePointerLockChange);
       if (document.pointerLockElement === container) {
         document.exitPointerLock?.();
@@ -1355,7 +1462,10 @@ export function Viewport3D() {
     wallFinish,
     walkthroughMode,
     selected3DEntity,
-    selectSubElement
+    selectSubElement,
+    addProp,
+    deleteProp,
+    updatePropCustomization
   ]);
 
   const handleCameraPreset = (preset: 'iso' | 'top' | 'front') => {
