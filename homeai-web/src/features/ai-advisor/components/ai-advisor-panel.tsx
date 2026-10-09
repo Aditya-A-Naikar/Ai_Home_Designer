@@ -42,6 +42,8 @@ export function AIAdvisorPanel() {
   const quickPills = [
     { label: 'Duplex Villa (G+1)', prompt: 'Build a duplex house with internal staircase and double height living room', icon: <Building2 className="h-3 w-3 text-emerald-600" /> },
     { label: '2BHK Layout', prompt: 'Build a complete 2BHK architectural floor plan with living room, bedrooms, kitchen, and furniture', icon: <LayoutGrid className="h-3 w-3 text-indigo-600" /> },
+    { label: 'Review Layout', prompt: 'Improve layout and review circulation and daylighting', icon: <Sparkles className="h-3 w-3 text-amber-600" /> },
+    { label: 'Design Styles', prompt: 'What architectural design presets and styles do you support?', icon: <Sparkles className="h-3 w-3 text-purple-600" /> },
     { label: '75" TV + Sofa', prompt: 'Add a 75-inch TV and modern gray L-shaped sofa to the Living Room', icon: <Tv className="h-3 w-3 text-sky-600" /> },
     { label: 'King Bed', prompt: 'Place a King size bed in the bedroom with nightstand clearance', icon: <BedDouble className="h-3 w-3 text-purple-600" /> },
     { label: 'Audit Codes', prompt: 'Audit my floor plan for NBC/IBC codes and natural daylight', icon: <ShieldAlert className="h-3 w-3 text-red-600" /> },

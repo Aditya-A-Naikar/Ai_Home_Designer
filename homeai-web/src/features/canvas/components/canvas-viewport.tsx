@@ -28,6 +28,7 @@ import {
 } from '@/core/geometry/wall-utils';
 import { Vector2D } from '@/core/geometry/vector';
 import { getRoomColor } from '@/core/geometry/room-utils';
+import { FloorPlanConfirmationModal, FloorPlanStatusBar } from './floor-plan-confirmation-modal';
 
 interface SnapFeedback {
   type: 'endpoint' | 'grid' | 'ortho';
@@ -122,6 +123,9 @@ export function CanvasViewport() {
     initialPos: Point2D;
     hasMoved: boolean;
   } | null>(null);
+
+  // Stage 3 Floor Plan Confirmation Modal State
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -971,6 +975,15 @@ export function CanvasViewport() {
         <span>•</span>
         <span>Ortho: <strong>{enableOrthoMode ? 'ON' : 'Shift'}</strong></span>
       </div>
+
+      {/* Stage 3 Floor Plan Review & Baseline Confirmation Bar */}
+      <FloorPlanStatusBar onOpenModal={() => setIsReviewModalOpen(true)} />
+
+      {/* Stage 3 Floor Plan Review & Confirmation Modal */}
+      <FloorPlanConfirmationModal 
+        isOpen={isReviewModalOpen} 
+        onClose={() => setIsReviewModalOpen(false)} 
+      />
     </div>
   );
 }

@@ -33,11 +33,14 @@ import { isPointInPolygon } from '@/core/geometry/room-utils';
 import { createProp3DMesh } from '@/core/geometry/furniture-3d';
 import { WalkthroughController } from '@/core/geometry/walkthrough-controller';
 import { AIRenderStudioModal } from './ai-render-studio-modal';
+import { Viewport3DCustomizer, Selected3DEntity } from './viewport-3d-customizer';
 
 export function Viewport3D() {
   const containerRef = useRef<HTMLDivElement>(null);
   const { currentProject } = useProjectStore();
-  const { setViewMode } = useCanvasStore();
+  const { setViewMode, selectSubElement } = useCanvasStore();
+
+  const [selected3DEntity, setSelected3DEntity] = useState<Selected3DEntity | null>(null);
 
   const [selectedFloorFilter, setSelectedFloorFilter] = useState<'all' | string>('all');
   const [cutawayMode, setCutawayMode] = useState<boolean>(true); // default cutaway at 1.2m
@@ -201,14 +204,6 @@ export function Viewport3D() {
       map: wallTextures.map || null,
       bumpMap: wallTextures.bumpMap || null,
       bumpScale: wallTextures.bumpScale || 0.005,
-    });
-
-    const wallInteriorMat = new THREE.MeshStandardMaterial({
-      color: activeWallSpec.colorHex,
-      roughness: Math.min(1, activeWallSpec.roughness + 0.05),
-      metalness: activeWallSpec.metalness,
-      bumpMap: wallTextures.bumpMap || null,
-      bumpScale: (wallTextures.bumpScale || 0.005) * 0.7,
     });
 
     const columnMat = new THREE.MeshStandardMaterial({
@@ -639,14 +634,18 @@ export function Viewport3D() {
           }
         });
 
+        const roomFinKey = (room.floorFinishId as FloorFinishType) || floorFinish;
+        const roomFinSpec = FLOOR_FINISHES[roomFinKey] || activeFloorSpec;
+        const roomFinTextures = getFloorPBRTextures(roomFinKey);
+
         const slabMat = new THREE.MeshStandardMaterial({
-          color: activeFloorSpec.colorHex,
-          roughness: activeFloorSpec.roughness,
-          metalness: activeFloorSpec.metalness,
-          map: floorTextures.map || null,
-          roughnessMap: floorTextures.roughnessMap || null,
-          bumpMap: floorTextures.bumpMap || null,
-          bumpScale: floorTextures.bumpScale || 0.004,
+          color: roomFinSpec.colorHex,
+          roughness: roomFinSpec.roughness,
+          metalness: roomFinSpec.metalness,
+          map: roomFinTextures.map || null,
+          roughnessMap: roomFinTextures.roughnessMap || null,
+          bumpMap: roomFinTextures.bumpMap || null,
+          bumpScale: roomFinTextures.bumpScale || 0.004,
         });
 
         const slabGeo = new THREE.ExtrudeGeometry(shape, {
@@ -658,6 +657,13 @@ export function Viewport3D() {
         slabMesh.rotation.x = -Math.PI / 2;
         slabMesh.position.y = floorElevationM + 0.01;
         slabMesh.receiveShadow = true;
+        slabMesh.userData = {
+          type: 'room',
+          id: room.id,
+          floorId: floor.id,
+          name: room.name,
+          floorFinishId: roomFinKey,
+        };
         scene.add(slabMesh);
 
         // Ceiling Plaster Soffit for multi-story buildings (bottom face of upper floor slabs)
@@ -776,7 +782,20 @@ export function Viewport3D() {
         const angle = Math.atan2(dz, dx);
         const thicknessM = (wall.thickness || 150) / 1000;
         const isExterior = wall.wallType === 'exterior_bearing';
-        const wallMat = isExterior ? wallExteriorMat : wallInteriorMat;
+
+        const specificWallFinKey = (wall.finishId as WallFinishType) || (isExterior ? 'exposed_brick' : wallFinish);
+        const specificWallFinSpec = WALL_FINISHES[specificWallFinKey] || activeWallSpec;
+        const specificWallTextures = getWallPBRTextures(specificWallFinKey);
+        const specificColor = wall.colorHex || specificWallFinSpec.colorHex;
+
+        const wallMat = new THREE.MeshStandardMaterial({
+          color: specificColor,
+          roughness: specificWallFinSpec.roughness,
+          metalness: specificWallFinSpec.metalness,
+          map: specificWallTextures.map || null,
+          bumpMap: specificWallTextures.bumpMap || null,
+          bumpScale: specificWallTextures.bumpScale || 0.003,
+        });
 
         const wallGroup = new THREE.Group();
         wallGroup.position.set(sx, floorElevationM, sz);
@@ -946,6 +965,20 @@ export function Viewport3D() {
           }
         }
 
+        wallGroup.userData = {
+          type: 'wall',
+          id: wall.id,
+          floorId: floor.id,
+          wallType: wall.wallType,
+          wallFinishId: specificWallFinKey,
+          colorHex: specificColor,
+        };
+        wallGroup.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.userData = wallGroup.userData;
+          }
+        });
+
         scene.add(wallGroup);
       });
 
@@ -1002,6 +1035,20 @@ export function Viewport3D() {
         const propMesh = createProp3DMesh(p);
         propMesh.position.set(px, floorElevationM, pz);
         propMesh.rotation.y = -(p.rotation || 0) * (Math.PI / 180);
+        propMesh.userData = {
+          type: 'prop',
+          id: p.id,
+          floorId: floor.id,
+          name: p.name || p.propType,
+          propType: p.propType,
+          rotation: p.rotation || 0,
+          position: p.position,
+        };
+        propMesh.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.userData = propMesh.userData;
+          }
+        });
         scene.add(propMesh);
       });
     });
@@ -1125,6 +1172,17 @@ export function Viewport3D() {
       }
     }
 
+    // Highlight helper for selected entity in 3D
+    if (selected3DEntity) {
+      scene.traverse((obj) => {
+        if (obj.userData?.id === selected3DEntity.id && obj.userData?.type === selected3DEntity.type) {
+          const helper = new THREE.BoxHelper(obj, 0x06b6d4);
+          (helper.material as THREE.LineBasicMaterial).linewidth = 2;
+          scene.add(helper);
+        }
+      });
+    }
+
     // 9. Animation Loop & Walkthrough Updates
     let lastTime = performance.now();
     let animationFrameId: number;
@@ -1162,7 +1220,7 @@ export function Viewport3D() {
     };
     animate();
 
-    // Keyboard and mouse handlers for First-Person Walkthrough
+    // Keyboard and mouse handlers for First-Person Walkthrough & Raycast Selection
     const handleKeyDown = (e: KeyboardEvent) => {
       wtController.handleKeyDown(e.code);
     };
@@ -1173,8 +1231,12 @@ export function Viewport3D() {
     let isMouseDown = false;
     let lastMouseX = 0;
     let lastMouseY = 0;
+    let pointerDownPos = { x: 0, y: 0 };
+    let pointerDownTime = 0;
 
     const handleMouseDown = (e: MouseEvent) => {
+      pointerDownPos = { x: e.clientX, y: e.clientY };
+      pointerDownTime = performance.now();
       if (!walkthroughMode) return;
       isMouseDown = true;
       lastMouseX = e.clientX;
@@ -1194,8 +1256,41 @@ export function Viewport3D() {
       }
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (e: MouseEvent) => {
       isMouseDown = false;
+
+      // Click detection (quick click without drag movement)
+      const dx = e.clientX - pointerDownPos.x;
+      const dy = e.clientY - pointerDownPos.y;
+      const dist = Math.hypot(dx, dy);
+      const elapsed = performance.now() - pointerDownTime;
+
+      if (dist < 6 && elapsed < 400 && document.pointerLockElement !== container) {
+        const rect = container.getBoundingClientRect();
+        const mouse = new THREE.Vector2(
+          ((e.clientX - rect.left) / rect.width) * 2 - 1,
+          -((e.clientY - rect.top) / rect.height) * 2 + 1
+        );
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(mouse, camera);
+
+        const intersects = raycaster.intersectObjects(scene.children, true);
+        let hitEntity: Selected3DEntity | null = null;
+        for (const hit of intersects) {
+          if (hit.object.userData && hit.object.userData.type) {
+            hitEntity = hit.object.userData as Selected3DEntity;
+            break;
+          }
+        }
+
+        if (hitEntity) {
+          setSelected3DEntity(hitEntity);
+          selectSubElement({ type: hitEntity.type, id: hitEntity.id });
+        } else {
+          setSelected3DEntity(null);
+          selectSubElement(null);
+        }
+      }
     };
 
     const handleContainerClick = () => {
@@ -1258,7 +1353,9 @@ export function Viewport3D() {
     solarData,
     floorFinish,
     wallFinish,
-    walkthroughMode
+    walkthroughMode,
+    selected3DEntity,
+    selectSubElement
   ]);
 
   const handleCameraPreset = (preset: 'iso' | 'top' | 'front') => {
@@ -1627,6 +1724,15 @@ export function Viewport3D() {
           <span>Scroll: Zoom</span>
         </div>
       )}
+
+      {/* Stage 5: Interactive 3D Customizer Panel, Presets, and Catalog */}
+      <Viewport3DCustomizer
+        selectedEntity={selected3DEntity}
+        onCloseSelection={() => {
+          setSelected3DEntity(null);
+          selectSubElement(null);
+        }}
+      />
 
       {/* Phase 16: AI Studio Render Synthesizer Modal */}
       {currentProject && (

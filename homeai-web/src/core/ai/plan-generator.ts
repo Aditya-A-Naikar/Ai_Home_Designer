@@ -1,7 +1,9 @@
 import { Project, Floor, Wall, Room, Door, Window, Prop, Staircase, SlabVoid, StructuralColumn } from "../domain/types";
 import { planAutonomousPlacement } from "./spatial-planner";
-import { auditFloorPlan, ArchitecturalSuggestion } from "./architect-rules";
+import { auditFloorPlan, ArchitecturalSuggestion, AuditCategory } from "./architect-rules";
 import { build2BHKLayout, build1BHKLayout, buildLivingRoomSuite, buildBedroomSuite, buildDuplexLayout } from "./architectural-layouts";
+import { validateFloorPlan, calculatePolygonAreaSqM } from "../geometry/floor-plan-validator";
+import { ARCHITECTURAL_DESIGN_PRESETS } from "../geometry/design-presets";
 import { v4 as uuidv4 } from "uuid";
 
 export interface PlanGenerationAction {
@@ -53,8 +55,8 @@ export function generatePlanFromPrompt(
     };
   }
 
-  // 1. Audit / Code Check Request
-  if (pLower.includes("audit") || pLower.includes("code") || pLower.includes("check") || pLower.includes("inspect") || pLower.includes("score")) {
+  // 1. Audit / Code Check Request (when not asking for layout improvement)
+  if (!pLower.includes("improve") && !pLower.includes("optimize") && (pLower.includes("audit") || pLower.includes("code") || pLower.includes("check") || pLower.includes("inspect") || pLower.includes("score"))) {
     const report = auditFloorPlan(project, floor.id);
     return {
       message: `Audit completed! Overall Compliance Score is ${report.overallScore}/100 (${report.complianceStatus.replace("_", " ")}). Found ${report.issues.length} observation(s) across Building Codes, Daylighting, and Egress.`,
@@ -161,18 +163,22 @@ export function generatePlanFromPrompt(
   }
 
   const isLayoutRequest = 
-    pLower.includes("2bhk") || 
-    pLower.includes("2-bhk") || 
-    pLower.includes("1bhk") || 
-    pLower.includes("1-bhk") || 
-    pLower.includes("3bhk") || 
-    pLower.includes("studio") || 
-    pLower.includes("layout") || 
-    pLower.includes("floor plan") || 
-    pLower.includes("house") || 
-    pLower.includes("apartment") ||
-    pLower.includes("villa") ||
-    (pLower.includes("generate") && (pLower.includes("plan") || pLower.includes("home")));
+    !pLower.includes("improve") &&
+    !pLower.includes("optimize") &&
+    (
+      pLower.includes("2bhk") || 
+      pLower.includes("2-bhk") || 
+      pLower.includes("1bhk") || 
+      pLower.includes("1-bhk") || 
+      pLower.includes("3bhk") || 
+      pLower.includes("studio") || 
+      pLower.includes("layout") || 
+      pLower.includes("floor plan") || 
+      pLower.includes("house") || 
+      pLower.includes("apartment") ||
+      pLower.includes("villa") ||
+      (pLower.includes("generate") && (pLower.includes("plan") || pLower.includes("home")))
+    );
 
   if (isLayoutRequest) {
     const is1BHK = pLower.includes("1bhk") || pLower.includes("1-bhk") || pLower.includes("one bedroom") || pLower.includes("studio");
@@ -268,6 +274,61 @@ export function generatePlanFromPrompt(
       actions: [],
       suggestions: [],
     };
+  }
+
+  // 5b. Layout Improvement & Spatial Reasoning (e.g. "Improve layout", "Check daylight", "Review circulation")
+  if (pLower.includes("improve") || pLower.includes("optimize") || pLower.includes("review layout") || pLower.includes("circulation")) {
+    const report = validateFloorPlan(floor);
+    const roomSummaries = floor.rooms.map(r => `${r.name}: ${calculatePolygonAreaSqM(r.polygon).toFixed(1)} m²`).join(", ");
+    
+    return {
+      message: `Architectural Layout Review for ${floor.name} (${report.score}/100):\n• Usable Space: ${report.totalAreaSqM} m² across ${floor.rooms.length} room(s) (${roomSummaries || 'No enclosed rooms yet'})\n• Circulation & Ingress: ${report.doorCount} door(s), ${report.windowCount} daylight opening(s)\n• Architectural Guidance: ${report.summary}\n\nYou can click 'Stage 3: Review Floor Plan' in the top bar to lock this structural layout into 3D, or ask me to generate extensions (e.g. 'Add a 4x3m master bedroom' or 'Build a duplex villa').`,
+      actions: [],
+      suggestions: report.issues.map((iss, i) => {
+        let cat: AuditCategory = "building_code";
+        if (iss.category === 'circulation') cat = 'egress';
+        else if (iss.category === 'daylight') cat = 'ventilation';
+        return {
+          id: `sug-${iss.id || i}`,
+          category: cat,
+          severity: iss.type,
+          title: iss.title,
+          description: iss.message,
+          affectedElementIds: iss.roomId ? [iss.roomId] : [],
+          applied: false,
+        };
+      }),
+    };
+  }
+
+  // 5c. Architectural Design Presets & Styles (e.g. "Apply Scandinavian style", "Modern minimalist", "What styles?")
+  if (pLower.includes("preset") || pLower.includes("scandinavian") || pLower.includes("minimalist") || pLower.includes("japandi") || pLower.includes("terrazzo") || pLower.includes("industrial") || pLower.includes("luxury")) {
+    const matchedPreset = Object.values(ARCHITECTURAL_DESIGN_PRESETS).find(p => 
+      pLower.includes(p.id.replace("_", " ")) || pLower.includes(p.name.toLowerCase()) || pLower.includes(p.id)
+    );
+
+    if (matchedPreset) {
+      return {
+        message: `Architectural Style: ${matchedPreset.name}\n• Tagline: "${matchedPreset.tagline}"\n• Character: ${matchedPreset.description}\n• Material Palette: ${matchedPreset.recommendedMaterials.join(" • ")}\n• PBR Wall Finish: ${matchedPreset.wallFinish.replace("_", " ")}\n• PBR Floor Finish: ${matchedPreset.floorFinish.replace("_", " ")}\n\nYou can apply this coordinated aesthetic instantly in 3D View using the 'Design Presets' button!`,
+        actions: [],
+        suggestions: [{
+          id: `apply-preset-${matchedPreset.id}`,
+          category: 'ergonomics',
+          severity: 'info',
+          title: `Apply ${matchedPreset.name} Preset`,
+          description: `Coordinated update across all floors with ${matchedPreset.recommendedMaterials.join(", ")}.`,
+          affectedElementIds: [],
+          applied: false,
+        }],
+      };
+    } else {
+      const allStyles = Object.values(ARCHITECTURAL_DESIGN_PRESETS).map(p => `• ${p.name}: ${p.tagline}`).join("\n");
+      return {
+        message: `I support 7 coordinated architectural design styles:\n${allStyles}\n\nAsk me about any style (e.g. 'Tell me about Japandi' or 'Apply Modern Minimalist') or use the 3D Design Presets toolbar.`,
+        actions: [],
+        suggestions: [],
+      };
+    }
   }
 
   // 6. Furniture & Prop Requests

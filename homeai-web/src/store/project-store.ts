@@ -3,7 +3,8 @@ import { immer } from 'zustand/middleware/immer';
 import { Project, Wall, Room, Door, Window, Floor, Point2D, Prop, Staircase, SlabVoid, StructuralColumn } from '@/core/domain/types';
 import { PlanGenerationAction } from '@/core/ai/plan-generator';
 import { projectRepository } from '@/infrastructure/persistence/local-storage-project-repository';
-import { autoDetectRooms } from '@/core/geometry/room-utils';
+import { autoDetectRooms, polygonArea } from '@/core/geometry/room-utils';
+import { ARCHITECTURAL_DESIGN_PRESETS } from '@/core/geometry/design-presets';
 import { useCanvasStore } from './canvas-store';
 
 interface ProjectState {
@@ -67,6 +68,18 @@ interface ProjectActions {
   addColumn: (floorId: string, col: StructuralColumn) => void;
   updateColumn: (floorId: string, colId: string, updater: (c: StructuralColumn) => void) => void;
   deleteColumn: (floorId: string, colId: string) => void;
+
+  // Stage 3: Mandatory Floor Plan Confirmation & Baseline Locking
+  confirmFloorPlan: () => { success: boolean; message: string };
+  reopenFloorPlanForEditing: () => void;
+
+  // 3D Customization & Finishes Studio
+  updateWallFinish: (floorId: string, wallId: string, finishId?: string, colorHex?: string, wallpaper?: string) => void;
+  updateWallFinishBulk: (floorId: string, scope: 'room' | 'all', targetRoomId?: string, finishId?: string, colorHex?: string) => void;
+  updateRoomFloorFinish: (floorId: string, roomId: string, finishId: string) => void;
+  updateFloorFinishBulk: (floorId: string, finishId: string) => void;
+  applyDesignPreset: (presetId: string) => void;
+  updatePropCustomization: (floorId: string, propId: string, customization: { finishMaterial?: string; finishColor?: string; width?: number; depth?: number; height?: number; rotation?: number; position?: Point2D; color?: string }) => void;
 
   undo: () => void;
   redo: () => void;
@@ -534,6 +547,173 @@ export const useProjectStore = create<ProjectState & ProjectActions>()(
         }
       }
       useCanvasStore.getState().markModified(true);
-    })
+    }),
+
+    confirmFloorPlan: () => {
+      const { currentProject } = get();
+      if (!currentProject) {
+        return { success: false, message: "No active project found." };
+      }
+
+      const activeFloor = currentProject.floors.find(f => f.id === currentProject.activeFloorId) || currentProject.floors[0];
+      if (!activeFloor || (activeFloor.walls.length === 0 && activeFloor.rooms.length === 0)) {
+        return { success: false, message: "Floor plan cannot be confirmed because it has no walls or rooms. Please create or generate a layout first." };
+      }
+
+      // Calculate summary metrics
+      let roomCount = 0;
+      let wallCount = 0;
+      let stairCount = 0;
+      let totalAreaSqMm = 0;
+
+      currentProject.floors.forEach(f => {
+        roomCount += f.rooms.length;
+        wallCount += f.walls.length;
+        stairCount += (f.stairs?.length || 0);
+        f.rooms.forEach(r => {
+          if (r.polygon && r.polygon.length >= 3) {
+            totalAreaSqMm += polygonArea(r.polygon);
+          }
+        });
+      });
+
+      const totalAreaSqM = Math.round(totalAreaSqMm / 1_000_000);
+      const nextVersion = (currentProject.designVersion || 0) + 1;
+
+      set((state) => {
+        pushHistory(state);
+        if (state.currentProject) {
+          state.currentProject.floorPlanStatus = "confirmed";
+          state.currentProject.designVersion = nextVersion;
+          state.currentProject.designBaseline = {
+            confirmedAt: new Date().toISOString(),
+            version: nextVersion,
+            snapshotJson: JSON.stringify(state.currentProject.floors),
+            summary: {
+              roomCount,
+              wallCount,
+              stairCount,
+              totalAreaSqM
+            }
+          };
+        }
+        useCanvasStore.getState().markModified(true);
+        useCanvasStore.getState().setViewMode('3d');
+      });
+
+      get().saveProject();
+
+      return {
+        success: true,
+        message: `Floor plan confirmed and locked as Design Baseline v${nextVersion} (${totalAreaSqM} m² / ${roomCount} rooms). Welcome to the 3D Architectural Customization Studio!`
+      };
+    },
+
+    reopenFloorPlanForEditing: () => set((state) => {
+      pushHistory(state);
+      if (state.currentProject) {
+        state.currentProject.floorPlanStatus = "draft";
+      }
+      useCanvasStore.getState().markModified(true);
+      useCanvasStore.getState().setViewMode('2d');
+    }),
+
+    updateWallFinish: (floorId, wallId, finishId, colorHex, wallpaper) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      const wall = floor?.walls.find(w => w.id === wallId);
+      if (wall) {
+        wall.finishId = finishId;
+        if (colorHex !== undefined) wall.colorHex = colorHex;
+        if (wallpaper !== undefined) wall.wallpaperPattern = wallpaper;
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    updateWallFinishBulk: (floorId, scope, targetRoomId, finishId, colorHex) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      if (!floor) return;
+
+      if (scope === 'all') {
+        floor.walls.forEach(w => {
+          if (finishId) w.finishId = finishId;
+          if (colorHex) w.colorHex = colorHex;
+        });
+      } else if (scope === 'room' && targetRoomId) {
+        const room = floor.rooms.find(r => r.id === targetRoomId);
+        if (room) {
+          room.wallFinishId = finishId;
+          floor.walls.forEach(w => {
+            if (finishId) w.finishId = finishId;
+            if (colorHex) w.colorHex = colorHex;
+          });
+        }
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    updateRoomFloorFinish: (floorId, roomId, finishId) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      const room = floor?.rooms.find(r => r.id === roomId);
+      if (room) {
+        room.floorFinishId = finishId;
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    updateFloorFinishBulk: (floorId, finishId) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      if (floor) {
+        floor.rooms.forEach(r => {
+          r.floorFinishId = finishId;
+        });
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    applyDesignPreset: (presetId) => set((state) => {
+      const preset = ARCHITECTURAL_DESIGN_PRESETS[presetId];
+      if (!preset || !state.currentProject) return;
+
+      pushHistory(state);
+      state.currentProject.activeDesignPreset = presetId;
+      state.currentProject.floors.forEach(floor => {
+        floor.rooms.forEach(r => {
+          r.floorFinishId = preset.floorFinish;
+          r.wallFinishId = preset.wallFinish;
+        });
+        floor.walls.forEach(w => {
+          w.finishId = preset.wallFinish;
+          w.colorHex = preset.primaryColor;
+        });
+      });
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    updatePropCustomization: (floorId, propId, customization) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      const prop = floor?.props?.find(p => p.id === propId);
+      if (prop) {
+        if (customization.finishMaterial !== undefined) prop.finishMaterial = customization.finishMaterial;
+        if (customization.finishColor !== undefined) {
+          prop.finishColor = customization.finishColor;
+          prop.color = customization.finishColor;
+        }
+        if (customization.color !== undefined) {
+          prop.color = customization.color;
+          prop.finishColor = customization.color;
+        }
+        if (customization.rotation !== undefined) prop.rotation = customization.rotation;
+        if (customization.position !== undefined) prop.position = customization.position;
+        if (customization.width !== undefined) prop.dimensions.width = customization.width;
+        if (customization.depth !== undefined) prop.dimensions.depth = customization.depth;
+        if (customization.height !== undefined) prop.dimensions.height = customization.height;
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
   }))
 );

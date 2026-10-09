@@ -159,6 +159,9 @@ export interface Wall {
   wallType?: WallType;
   doors: Door[];
   windows: Window[];
+  finishId?: string; // e.g. 'white_plaster', 'warm_greige', 'exposed_brick', 'charcoal_slate'
+  colorHex?: string; // hex color for custom paint
+  wallpaperPattern?: string; // e.g. 'geometric', 'fluted_panel', 'damask'
 }
 
 export interface Room {
@@ -168,6 +171,9 @@ export interface Room {
   polygon: Point2D[]; // boundary vertices in mm
   color?: string; // hex color for 2D fill
   targetArea?: number; // target area in sq mm
+  floorFinishId?: string; // e.g. 'teak_hardwood', 'italian_marble', 'polished_concrete', 'slate_ceramic_tile', 'terrazzo'
+  wallFinishId?: string; // default wall finish for surfaces enclosed in room
+  ceilingFinishId?: string;
 }
 
 export interface PropSpecification {
@@ -179,6 +185,10 @@ export interface PropSpecification {
   seats?: number;
   bedSize?: "King" | "Queen" | "Single" | "Double";
   layout?: "straight" | "l_shape_left" | "l_shape_right" | "round";
+  finishMaterial?: string; // 'fabric' | 'leather' | 'velvet' | 'wood' | 'marble' | 'chrome'
+  finishColor?: string; // hex color
+  bladeCount?: number; // for ceiling fans
+  lightOutputLumens?: number; // for lighting fixtures
   [key: string]: string | number | boolean | undefined;
 }
 
@@ -189,6 +199,8 @@ export type PropCategory =
   | "entertainment"
   | "kitchen"
   | "bathroom"
+  | "lighting"
+  | "decor"
   | "office"
   | "parking"
   | "circulation";
@@ -201,6 +213,12 @@ export type PropType =
   | "wardrobe"
   | "desk"
   | "coffee_table"
+  | "side_table"
+  | "bookshelf"
+  | "ceiling_fan"
+  | "pendant_light"
+  | "chandelier"
+  | "recessed_light"
   | "toilet"
   | "shower"
   | "sink"
@@ -210,7 +228,9 @@ export type PropType =
   | "refrigerator"
   | "bathtub"
   | "car_sedan"
-  | "car_suv";
+  | "car_suv"
+  | "plant"
+  | "curtain";
 
 export interface Prop {
   id: string;
@@ -227,6 +247,9 @@ export interface Prop {
     height?: number; // in mm
   };
   color?: string; // hex color for 2D styling
+  finishMaterial?: string; // 'fabric' | 'leather' | 'wood' | 'marble' | 'chrome'
+  finishColor?: string; // hex color code for 3D PBR rendering
+  elevationOffsetMm?: number; // vertical mounting offset (e.g. 2400mm for ceiling fans & lights)
   shape?: "rectangular" | "l_shape" | "curved" | "round";
   specifications?: PropSpecification;
 }
@@ -305,6 +328,20 @@ export interface DuplexConfig {
   stairType?: StairType;
 }
 
+export type FloorPlanStatus = "draft" | "under_review" | "confirmed";
+
+export interface DesignBaseline {
+  confirmedAt: string; // ISO 8601
+  version: number;
+  snapshotJson: string; // Serialized floors & walls geometry snapshot
+  summary: {
+    roomCount: number;
+    wallCount: number;
+    stairCount: number;
+    totalAreaSqM: number;
+  };
+}
+
 export interface Project {
   schemaVersion: 1;
   id: string; // UUID v4
@@ -321,4 +358,8 @@ export interface Project {
   metadata: ProjectMetadata;
   activeFloorId: string;
   floors: Floor[];
+  floorPlanStatus?: FloorPlanStatus; // 'draft' | 'under_review' | 'confirmed'
+  designBaseline?: DesignBaseline;
+  designVersion?: number;
+  activeDesignPreset?: string;
 }
