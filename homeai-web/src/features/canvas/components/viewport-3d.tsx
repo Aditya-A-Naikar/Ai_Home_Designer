@@ -26,7 +26,8 @@ import {
   FloorFinishType, 
   WallFinishType 
 } from '@/core/geometry/pbr-materials';
-import { Door, Window } from '@/core/domain/types';
+import { Door, Window, Staircase } from '@/core/domain/types';
+import { isPointInPolygon } from '@/core/geometry/room-utils';
 import { createProp3DMesh } from '@/core/geometry/furniture-3d';
 import { WalkthroughController } from '@/core/geometry/walkthrough-controller';
 import { AIRenderStudioModal } from './ai-render-studio-modal';
@@ -107,12 +108,15 @@ export function Viewport3D() {
     camera.position.set(15, 18, 20);
     cameraRef.current = camera;
 
-    // 3. Renderer with Soft Contact Shadows
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    // 3. Renderer with Soft Contact Shadows, preserveDrawingBuffer, & ACES Filmic Tone Mapping
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
     container.appendChild(renderer.domElement);
 
     // 4. Orbit Controls & Walkthrough Controller
@@ -202,25 +206,319 @@ export function Viewport3D() {
     });
 
     const glassMat = new THREE.MeshPhysicalMaterial({
-      color: 0x38bdf8,
-      transmission: 0.85,
-      opacity: 0.6,
+      color: 0xe0f2fe,
+      transmission: 0.92,
+      opacity: 0.75,
       transparent: true,
-      roughness: 0.08,
+      roughness: 0.05,
       ior: 1.52,
+      reflectivity: 0.6,
     });
 
     const frameMat = new THREE.MeshStandardMaterial({
-      color: 0x1e293b, // Anodized black aluminum
-      roughness: 0.4,
-      metalness: 0.6,
+      color: 0x0f172a, // Anodized architectural charcoal
+      roughness: 0.35,
+      metalness: 0.7,
     });
 
     const woodTreadMat = new THREE.MeshStandardMaterial({
       color: activeFloorSpec.id === 'teak_hardwood' ? 0xc27838 : 0x78350f,
-      roughness: 0.5,
+      roughness: 0.45,
       metalness: 0.05,
     });
+
+    const riserMat = new THREE.MeshStandardMaterial({
+      color: 0xf8fafc,
+      roughness: 0.7,
+      metalness: 0.02,
+    });
+
+    const skirtingMat = new THREE.MeshStandardMaterial({
+      color: activeFloorSpec.id === 'teak_hardwood' ? 0x92400e : 0x334155,
+      roughness: 0.45,
+      metalness: 0.05,
+    });
+
+    const wallCapMat = new THREE.MeshStandardMaterial({
+      color: 0x1e293b,
+      roughness: 0.4,
+      metalness: 0.5,
+    });
+
+    const doorJambMat = new THREE.MeshStandardMaterial({
+      color: 0x1e293b,
+      roughness: 0.35,
+      metalness: 0.6,
+    });
+
+    const doorLeafMat = new THREE.MeshStandardMaterial({
+      color: 0x334155,
+      roughness: 0.5,
+      metalness: 0.1,
+    });
+
+    const brassHandleMat = new THREE.MeshStandardMaterial({
+      color: 0xd4af37, // Brushed Brass
+      roughness: 0.25,
+      metalness: 0.85,
+    });
+
+    const windowSillMat = new THREE.MeshStandardMaterial({
+      color: 0xe2e8f0, // Architectural stone sill
+      roughness: 0.75,
+      metalness: 0.05,
+    });
+
+    // --- Architectural Component Builders ---
+    function createDetailedDoor(widthM: number, heightM: number, thicknessM: number): THREE.Group {
+      const group = new THREE.Group();
+      const jambW = 0.05;
+      const jambDepth = thicknessM + 0.02;
+
+      // Outer Jambs
+      const leftJamb = new THREE.Mesh(new THREE.BoxGeometry(jambW, heightM, jambDepth), doorJambMat);
+      leftJamb.position.set(-widthM / 2 + jambW / 2, heightM / 2, 0);
+      leftJamb.castShadow = true;
+      group.add(leftJamb);
+
+      const rightJamb = new THREE.Mesh(new THREE.BoxGeometry(jambW, heightM, jambDepth), doorJambMat);
+      rightJamb.position.set(widthM / 2 - jambW / 2, heightM / 2, 0);
+      rightJamb.castShadow = true;
+      group.add(rightJamb);
+
+      const topJamb = new THREE.Mesh(new THREE.BoxGeometry(widthM, jambW, jambDepth), doorJambMat);
+      topJamb.position.set(0, heightM - jambW / 2, 0);
+      topJamb.castShadow = true;
+      group.add(topJamb);
+
+      // Inset Door Panel
+      const leafW = widthM - jambW * 2;
+      const leafH = heightM - jambW;
+      const leafThick = 0.04;
+      const leaf = new THREE.Mesh(new THREE.BoxGeometry(leafW, leafH, leafThick), doorLeafMat);
+      leaf.position.set(0, leafH / 2, -0.01);
+      leaf.castShadow = true;
+      group.add(leaf);
+
+      // Brushed Brass Lever Handle
+      const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.12, 12), brassHandleMat);
+      handle.rotation.z = Math.PI / 2;
+      handle.position.set(widthM / 2 - jambW - 0.08, 0.95, leafThick / 2 + 0.02);
+      group.add(handle);
+
+      return group;
+    }
+
+    function createDetailedWindow(widthM: number, heightM: number, thicknessM: number): THREE.Group {
+      const group = new THREE.Group();
+      const frameW = 0.05;
+      const frameD = thicknessM + 0.01;
+
+      // Outer Perimeter Frame
+      const leftF = new THREE.Mesh(new THREE.BoxGeometry(frameW, heightM, frameD), frameMat);
+      leftF.position.set(-widthM / 2 + frameW / 2, heightM / 2, 0);
+      leftF.castShadow = true;
+      group.add(leftF);
+
+      const rightF = new THREE.Mesh(new THREE.BoxGeometry(frameW, heightM, frameD), frameMat);
+      rightF.position.set(widthM / 2 - frameW / 2, heightM / 2, 0);
+      rightF.castShadow = true;
+      group.add(rightF);
+
+      const topF = new THREE.Mesh(new THREE.BoxGeometry(widthM, frameW, frameD), frameMat);
+      topF.position.set(0, heightM - frameW / 2, 0);
+      topF.castShadow = true;
+      group.add(topF);
+
+      const btmF = new THREE.Mesh(new THREE.BoxGeometry(widthM, frameW, frameD), frameMat);
+      btmF.position.set(0, frameW / 2, 0);
+      btmF.castShadow = true;
+      group.add(btmF);
+
+      // Center Mullion for wide windows
+      if (widthM > 1.2) {
+        const mullionV = new THREE.Mesh(new THREE.BoxGeometry(0.035, heightM - frameW * 2, frameD * 0.9), frameMat);
+        mullionV.position.set(0, heightM / 2, 0);
+        group.add(mullionV);
+      }
+
+      // Double-Glazed Glass Pane
+      const glassW = widthM - frameW * 2;
+      const glassH = heightM - frameW * 2;
+      const glassMesh = new THREE.Mesh(new THREE.BoxGeometry(glassW, glassH, 0.015), glassMat);
+      glassMesh.position.set(0, heightM / 2, 0);
+      group.add(glassMesh);
+
+      // Exterior Window Sill with Projection and Drip Edge
+      const sillDepth = thicknessM / 2 + 0.08;
+      const sillMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(widthM + 0.08, 0.04, sillDepth),
+        windowSillMat
+      );
+      sillMesh.position.set(0, -0.02, sillDepth / 2 - thicknessM / 4);
+      sillMesh.castShadow = true;
+      group.add(sillMesh);
+
+      return group;
+    }
+
+    function createDetailedStaircase(st: Staircase, totalHeightM: number): THREE.Group {
+      const group = new THREE.Group();
+      const stairWidthM = (st.width || 1000) / 1000;
+      const stairLengthM = (st.length || 2400) / 1000;
+      const steps = Math.max(12, st.stepCount || 18);
+      const stairType = st.stairType || "straight";
+
+      if (stairType === "dog_leg") {
+        const flightWM = (stairWidthM - 0.1) / 2;
+        const landingDepthM = flightWM;
+        const flightRunM = Math.max(0.6, stairLengthM - landingDepthM);
+        const stepsPerFlight = Math.ceil(steps / 2);
+        const riserH = (totalHeightM / 2) / stepsPerFlight;
+        const treadL = flightRunM / stepsPerFlight;
+
+        // Flight 1: Left Flight (ascending from z = stairLengthM to z = landingDepthM)
+        for (let i = 0; i < stepsPerFlight; i++) {
+          const stepY = i * riserH;
+          const stepZ = stairLengthM - (i + 1) * treadL;
+
+          const treadMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(flightWM, 0.035, treadL + 0.02),
+            woodTreadMat
+          );
+          treadMesh.position.set(flightWM / 2, stepY + riserH, stepZ + treadL / 2);
+          treadMesh.castShadow = true;
+          treadMesh.receiveShadow = true;
+          group.add(treadMesh);
+
+          const riserMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(flightWM, riserH, 0.02),
+            riserMat
+          );
+          riserMesh.position.set(flightWM / 2, stepY + riserH / 2, stepZ + treadL);
+          riserMesh.receiveShadow = true;
+          group.add(riserMesh);
+        }
+
+        // Flight 1 Railing & Balustrade
+        const f1Len = Math.hypot(flightRunM, totalHeightM / 2);
+        const f1Angle = Math.atan2(totalHeightM / 2, flightRunM);
+        const f1Rail = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, f1Len), frameMat);
+        f1Rail.position.set(0.02, totalHeightM / 4 + 0.9, stairLengthM - flightRunM / 2);
+        f1Rail.rotation.x = f1Angle;
+        group.add(f1Rail);
+
+        const f1Glass = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.85, f1Len), glassMat);
+        f1Glass.position.set(0.02, totalHeightM / 4 + 0.45, stairLengthM - flightRunM / 2);
+        f1Glass.rotation.x = f1Angle;
+        group.add(f1Glass);
+
+        // Mid-Landing at totalHeightM / 2
+        const landingH = totalHeightM / 2;
+        const landingMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(stairWidthM, 0.12, landingDepthM),
+          woodTreadMat
+        );
+        landingMesh.position.set(stairWidthM / 2, landingH - 0.06, landingDepthM / 2);
+        landingMesh.castShadow = true;
+        landingMesh.receiveShadow = true;
+        group.add(landingMesh);
+
+        // Landing Back Railing
+        const landRail = new THREE.Mesh(new THREE.BoxGeometry(stairWidthM, 0.04, 0.04), frameMat);
+        landRail.position.set(stairWidthM / 2, landingH + 0.9, 0.02);
+        group.add(landRail);
+
+        const landGlass = new THREE.Mesh(new THREE.BoxGeometry(stairWidthM, 0.85, 0.015), glassMat);
+        landGlass.position.set(stairWidthM / 2, landingH + 0.45, 0.02);
+        group.add(landGlass);
+
+        // Flight 2: Right Flight (ascending from z = landingDepthM to z = stairLengthM)
+        const f2StartX = stairWidthM - flightWM;
+        for (let i = 0; i < stepsPerFlight; i++) {
+          const stepY = landingH + i * riserH;
+          const stepZ = landingDepthM + i * treadL;
+
+          const treadMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(flightWM, 0.035, treadL + 0.02),
+            woodTreadMat
+          );
+          treadMesh.position.set(f2StartX + flightWM / 2, stepY + riserH, stepZ + treadL / 2);
+          treadMesh.castShadow = true;
+          treadMesh.receiveShadow = true;
+          group.add(treadMesh);
+
+          const riserMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(flightWM, riserH, 0.02),
+            riserMat
+          );
+          riserMesh.position.set(f2StartX + flightWM / 2, stepY + riserH / 2, stepZ);
+          riserMesh.receiveShadow = true;
+          group.add(riserMesh);
+        }
+
+        // Flight 2 Railing & Balustrade
+        const f2Rail = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, f1Len), frameMat);
+        f2Rail.position.set(stairWidthM - 0.02, landingH + totalHeightM / 4 + 0.9, landingDepthM + flightRunM / 2);
+        f2Rail.rotation.x = -f1Angle;
+        group.add(f2Rail);
+
+        const f2Glass = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.85, f1Len), glassMat);
+        f2Glass.position.set(stairWidthM - 0.02, landingH + totalHeightM / 4 + 0.45, landingDepthM + flightRunM / 2);
+        f2Glass.rotation.x = -f1Angle;
+        group.add(f2Glass);
+
+        // Central Structural Spine / Stringer
+        const stringer = new THREE.Mesh(new THREE.BoxGeometry(0.08, totalHeightM, stairLengthM), columnMat);
+        stringer.position.set(flightWM + 0.05, totalHeightM / 2, stairLengthM / 2);
+        group.add(stringer);
+
+      } else {
+        // Straight Flight
+        const riserH = totalHeightM / steps;
+        const treadL = stairLengthM / steps;
+
+        for (let i = 0; i < steps; i++) {
+          const stepY = i * riserH;
+          const stepZ = stairLengthM - (i + 1) * treadL;
+
+          const treadMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(stairWidthM, 0.035, treadL + 0.02),
+            woodTreadMat
+          );
+          treadMesh.position.set(stairWidthM / 2, stepY + riserH, stepZ + treadL / 2);
+          treadMesh.castShadow = true;
+          treadMesh.receiveShadow = true;
+          group.add(treadMesh);
+
+          const riserMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(stairWidthM, riserH, 0.02),
+            riserMat
+          );
+          riserMesh.position.set(stairWidthM / 2, stepY + riserH / 2, stepZ + treadL);
+          riserMesh.receiveShadow = true;
+          group.add(riserMesh);
+        }
+
+        const slopeLen = Math.hypot(stairLengthM, totalHeightM);
+        const slopeAngle = Math.atan2(totalHeightM, stairLengthM);
+
+        [-1, 1].forEach((side) => {
+          const railX = side === -1 ? 0.02 : stairWidthM - 0.02;
+          const railMesh = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, slopeLen), frameMat);
+          railMesh.position.set(railX, totalHeightM / 2 + 0.9, stairLengthM / 2);
+          railMesh.rotation.x = slopeAngle;
+          group.add(railMesh);
+
+          const glassMesh = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.85, slopeLen), glassMat);
+          glassMesh.position.set(railX, totalHeightM / 2 + 0.45, stairLengthM / 2);
+          glassMesh.rotation.x = slopeAngle;
+          group.add(glassMesh);
+        });
+      }
+
+      return group;
+    }
 
     // Determine wall height based on cutaway mode
     const defaultWallHeight = cutawayMode ? 1.2 : 2.8;
@@ -236,7 +534,7 @@ export function Viewport3D() {
       const floorElevationM = (floor.elevation || 0) / 1000;
       const wallHeightM = defaultWallHeight;
 
-      // A. Rooms (PBR Floor Slabs)
+      // A. Rooms (PBR Floor Slabs with Through-Hole Punching for Stairs and Voids)
       floor.rooms.forEach((room) => {
         if (!room.polygon || room.polygon.length < 3) return;
 
@@ -248,6 +546,58 @@ export function Viewport3D() {
           else shape.lineTo(px, -pz);
         });
 
+        // Punch through-holes for staircases connecting from below
+        const lowerFloor = currentProject.floors.find(f => (f.elevation || 0) < (floor.elevation || 0));
+        if (lowerFloor?.stairs && lowerFloor.stairs.length > 0) {
+          lowerFloor.stairs.forEach(st => {
+            const anchorX = st.position.x / 1000 - centerOffset.x;
+            const anchorZ = st.position.y / 1000 - centerOffset.z;
+            const w = (st.width || 1000) / 1000;
+            const l = (st.length || 2400) / 1000;
+            const rad = ((st.rotation || 0) * Math.PI) / 180;
+            const cos = Math.cos(rad);
+            const sin = Math.sin(rad);
+
+            const corners = [
+              { x: 0, z: 0 },
+              { x: w, z: 0 },
+              { x: w, z: l },
+              { x: 0, z: l },
+            ].map(c => ({
+              x: anchorX + (c.x * cos - c.z * sin),
+              z: anchorZ + (c.x * sin + c.z * cos),
+            }));
+
+            const centerX = (corners[0].x + corners[2].x) / 2;
+            const centerZ = (corners[0].z + corners[2].z) / 2;
+            const ptMm = { x: (centerX + centerOffset.x) * 1000, y: (centerZ + centerOffset.z) * 1000 };
+            if (isPointInPolygon(ptMm, room.polygon)) {
+              const hole = new THREE.Path();
+              hole.moveTo(corners[0].x, -corners[0].z);
+              hole.lineTo(corners[1].x, -corners[1].z);
+              hole.lineTo(corners[2].x, -corners[2].z);
+              hole.lineTo(corners[3].x, -corners[3].z);
+              hole.closePath();
+              shape.holes.push(hole);
+            }
+          });
+        }
+
+        // Punch through-holes for explicit floor slab voids
+        floor.voids?.forEach(v => {
+          if (v.polygon && v.polygon.length >= 3) {
+            const hole = new THREE.Path();
+            v.polygon.forEach((pt, idx) => {
+              const vx = pt.x / 1000 - centerOffset.x;
+              const vz = pt.y / 1000 - centerOffset.z;
+              if (idx === 0) hole.moveTo(vx, -vz);
+              else hole.lineTo(vx, -vz);
+            });
+            hole.closePath();
+            shape.holes.push(hole);
+          }
+        });
+
         const slabMat = new THREE.MeshStandardMaterial({
           color: activeFloorSpec.colorHex,
           roughness: activeFloorSpec.roughness,
@@ -255,7 +605,7 @@ export function Viewport3D() {
         });
 
         const slabGeo = new THREE.ExtrudeGeometry(shape, {
-          depth: 0.08,
+          depth: 0.12,
           bevelEnabled: false,
         });
 
@@ -281,7 +631,7 @@ export function Viewport3D() {
         scene.add(colMesh);
       });
 
-      // C. Walls with Openings
+      // C. Walls with Detailed Openings & Baseboards
       floor.walls.forEach((wall) => {
         const sx = wall.start.x / 1000 - centerOffset.x;
         const sz = wall.start.y / 1000 - centerOffset.z;
@@ -302,7 +652,6 @@ export function Viewport3D() {
         wallGroup.position.set(sx, floorElevationM, sz);
         wallGroup.rotation.y = -angle;
 
-        // Collect openings along the wall
         interface OpeningSpan {
           type: 'door' | 'window';
           startOffset: number;
@@ -355,6 +704,22 @@ export function Viewport3D() {
           solidMesh.castShadow = true;
           solidMesh.receiveShadow = true;
           wallGroup.add(solidMesh);
+
+          // Baseboard / Skirting Trim along floor
+          const skirtMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(wallLengthM, 0.08, thicknessM + 0.015),
+            skirtingMat
+          );
+          skirtMesh.position.set(wallLengthM / 2, 0.04, 0);
+          wallGroup.add(skirtMesh);
+
+          // Top Wall Coping / Architectural Reveal
+          const capMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(wallLengthM, 0.03, thicknessM + 0.02),
+            wallCapMat
+          );
+          capMesh.position.set(wallLengthM / 2, wallHeightM - 0.015, 0);
+          wallGroup.add(capMesh);
         } else {
           // Segmented Wall with Punctures
           let curX = 0;
@@ -367,6 +732,22 @@ export function Viewport3D() {
               segMesh.castShadow = true;
               segMesh.receiveShadow = true;
               wallGroup.add(segMesh);
+
+              // Skirting trim
+              const skirtMesh = new THREE.Mesh(
+                new THREE.BoxGeometry(segLen, 0.08, thicknessM + 0.015),
+                skirtingMat
+              );
+              skirtMesh.position.set(curX + segLen / 2, 0.04, 0);
+              wallGroup.add(skirtMesh);
+
+              // Top cap trim
+              const capMesh = new THREE.Mesh(
+                new THREE.BoxGeometry(segLen, 0.03, thicknessM + 0.02),
+                wallCapMat
+              );
+              capMesh.position.set(curX + segLen / 2, wallHeightM - 0.015, 0);
+              wallGroup.add(capMesh);
             }
 
             if (op.type === 'window') {
@@ -379,30 +760,31 @@ export function Viewport3D() {
                 sillMesh.castShadow = true;
                 sillMesh.receiveShadow = true;
                 wallGroup.add(sillMesh);
+
+                // Sub-sill skirting
+                const subSkirt = new THREE.Mesh(
+                  new THREE.BoxGeometry(op.widthM, 0.08, thicknessM + 0.015),
+                  skirtingMat
+                );
+                subSkirt.position.set(op.startOffset + op.widthM / 2, 0.04, 0);
+                wallGroup.add(subSkirt);
               }
 
-              // Window Glass Pane
+              // Window Assembly
               if (!cutawayMode || op.sillM < wallHeightM) {
                 const winH = Math.min(op.heightM, Math.max(0, wallHeightM - op.sillM));
                 if (winH > 0.1) {
-                  const glassGeo = new THREE.BoxGeometry(op.widthM, winH, 0.02);
-                  const glassMesh = new THREE.Mesh(glassGeo, glassMat);
-                  glassMesh.position.set(op.startOffset + op.widthM / 2, op.sillM + winH / 2, 0);
-                  wallGroup.add(glassMesh);
-
-                  // Frame outline
-                  const frameGeo = new THREE.BoxGeometry(op.widthM, winH, thicknessM * 1.05);
-                  const frameWire = new THREE.BoxHelper(new THREE.Mesh(frameGeo), 0x334155);
-                  frameWire.position.set(op.startOffset + op.widthM / 2, op.sillM + winH / 2, 0);
-                  wallGroup.add(frameWire);
+                  const winAssembly = createDetailedWindow(op.widthM, winH, thicknessM);
+                  winAssembly.position.set(op.startOffset + op.widthM / 2, op.sillM, 0);
+                  wallGroup.add(winAssembly);
                 }
               }
             } else if (op.type === 'door') {
-              // Door Frame & Opening
-              const doorFrameGeo = new THREE.BoxGeometry(op.widthM, op.heightM, thicknessM * 1.05);
-              const doorWire = new THREE.BoxHelper(new THREE.Mesh(doorFrameGeo), 0xd97706);
-              doorWire.position.set(op.startOffset + op.widthM / 2, op.heightM / 2, 0);
-              wallGroup.add(doorWire);
+              // Detailed Door Assembly
+              const doorH = Math.min(op.heightM, wallHeightM);
+              const doorAssembly = createDetailedDoor(op.widthM, doorH, thicknessM);
+              doorAssembly.position.set(op.startOffset + op.widthM / 2, 0, 0);
+              wallGroup.add(doorAssembly);
             }
 
             curX = op.endOffset;
@@ -417,52 +799,36 @@ export function Viewport3D() {
             remMesh.castShadow = true;
             remMesh.receiveShadow = true;
             wallGroup.add(remMesh);
+
+            const remSkirt = new THREE.Mesh(
+              new THREE.BoxGeometry(remLen, 0.08, thicknessM + 0.015),
+              skirtingMat
+            );
+            remSkirt.position.set(curX + remLen / 2, 0.04, 0);
+            wallGroup.add(remSkirt);
+
+            const remCap = new THREE.Mesh(
+              new THREE.BoxGeometry(remLen, 0.03, thicknessM + 0.02),
+              wallCapMat
+            );
+            remCap.position.set(curX + remLen / 2, wallHeightM - 0.015, 0);
+            wallGroup.add(remCap);
           }
         }
 
         scene.add(wallGroup);
       });
 
-      // D. Staircases
+      // D. Architectural Staircases (Synchronized with 2D plan)
       floor.stairs?.forEach((st) => {
-        const sx = st.position.x / 1000 - centerOffset.x;
-        const sz = st.position.y / 1000 - centerOffset.z;
-        const stairWidthM = (st.width || 1000) / 1000;
-        const stairLengthM = (st.length || 2400) / 1000;
-        const totalHeightM = (floor.height || 3000) / 1000;
-        const steps = Math.max(12, st.stepCount || 18);
-        const riserH = totalHeightM / steps;
-        const treadL = stairLengthM / steps;
+        const anchorX = st.position.x / 1000 - centerOffset.x;
+        const anchorZ = st.position.y / 1000 - centerOffset.z;
+        const totalHeightM = (floor.height || 2800) / 1000;
 
-        const stairGroup = new THREE.Group();
-        stairGroup.position.set(sx, floorElevationM, sz);
-        stairGroup.rotation.y = -(st.rotation || 0) * (Math.PI / 180);
-
-        for (let i = 0; i < steps; i++) {
-          const stepY = i * riserH;
-          const stepZ = i * treadL - stairLengthM / 2;
-
-          const treadGeo = new THREE.BoxGeometry(stairWidthM, riserH * 0.95, treadL);
-          const treadMesh = new THREE.Mesh(treadGeo, woodTreadMat);
-          treadMesh.position.set(0, stepY + riserH / 2, stepZ + treadL / 2);
-          treadMesh.castShadow = true;
-          treadMesh.receiveShadow = true;
-          stairGroup.add(treadMesh);
-        }
-
-        // Architectural Glass Balustrade
-        const balustradeGeo = new THREE.BoxGeometry(0.02, 1.0, stairLengthM);
-        const balustradeMesh = new THREE.Mesh(balustradeGeo, glassMat);
-        balustradeMesh.position.set(stairWidthM / 2, totalHeightM / 2 + 0.5, 0);
-        stairGroup.add(balustradeMesh);
-
-        // Stainless Steel Handrail
-        const handrailGeo = new THREE.BoxGeometry(0.04, 0.04, stairLengthM);
-        const handrailMesh = new THREE.Mesh(handrailGeo, frameMat);
-        handrailMesh.position.set(stairWidthM / 2, totalHeightM / 2 + 1.0, 0);
-        stairGroup.add(handrailMesh);
-
-        scene.add(stairGroup);
+        const stairMesh = createDetailedStaircase(st, totalHeightM);
+        stairMesh.position.set(anchorX, floorElevationM, anchorZ);
+        stairMesh.rotation.y = -(st.rotation || 0) * (Math.PI / 180);
+        scene.add(stairMesh);
       });
 
       // E. Slab Voids & Glass Balustrades
@@ -520,10 +886,17 @@ export function Viewport3D() {
       lastTime = now;
 
       if (walkthroughMode) {
-        wtController.update(Math.min(deltaSec, 0.1), { minX: -60, maxX: 60, minZ: -60, maxZ: 60 });
+        wtController.update(Math.min(deltaSec, 0.1), {
+          floors: currentProject.floors,
+          centerOffset,
+          minX: -60,
+          maxX: 60,
+          minZ: -60,
+          maxZ: 60,
+        });
         const activeFloor = currentProject.floors.find((f) => f.id === currentProject.activeFloorId) || currentProject.floors[0];
         if (activeFloor) {
-          const room = wtController.getCurrentRoom(activeFloor.rooms, centerOffset);
+          const room = wtController.getCurrentRoom(activeFloor.rooms, centerOffset, currentProject.floors);
           setCurrentRoomName((prev) => (prev !== room ? room : prev));
         }
       } else {

@@ -269,3 +269,105 @@ export function calculateStairGeometry(stair: Staircase): StairGeometry {
     label: stair.direction.toUpperCase(),
   };
 }
+
+/**
+ * Calculates the exact 3D stair walking surface elevation at a given world coordinate (in meters).
+ * Returns { inside: boolean, elevationM: number, isLanding: boolean }.
+ */
+export function getStairSurfaceElevation(
+  stair: Staircase,
+  worldX: number,
+  worldZ: number,
+  centerOffset: { x: number; z: number },
+  floorElevationM: number = 0,
+  floorHeightM: number = 2.8
+): { inside: boolean; elevationM: number; isLanding: boolean } {
+  const anchorX = stair.position.x / 1000 - centerOffset.x;
+  const anchorZ = stair.position.y / 1000 - centerOffset.z;
+  const stairWidthM = (stair.width || 1000) / 1000;
+  const stairLengthM = (stair.length || 2400) / 1000;
+
+  // Delta from anchor
+  const dx = worldX - anchorX;
+  const dz = worldZ - anchorZ;
+
+  // Un-rotate by stair.rotation
+  const rotRad = ((stair.rotation || 0) * Math.PI) / 180;
+  const cos = Math.cos(rotRad);
+  const sin = Math.sin(rotRad);
+
+  const u = dx * cos + dz * sin;
+  const v = -dx * sin + dz * cos;
+
+  // Check if inside bounding rectangle
+  if (u < 0 || u > stairWidthM || v < 0 || v > stairLengthM) {
+    return { inside: false, elevationM: floorElevationM, isLanding: false };
+  }
+
+  const stairType = stair.stairType || "straight";
+
+  if (stairType === "dog_leg") {
+    const flightWM = (stairWidthM - 0.1) / 2;
+    const landingDepthM = flightWM;
+    const flightRunM = Math.max(0.5, stairLengthM - landingDepthM);
+    const midElevationM = floorElevationM + floorHeightM / 2;
+
+    // Mid landing area
+    if (v < landingDepthM) {
+      return { inside: true, elevationM: midElevationM, isLanding: true };
+    }
+
+    // Flight 1 (Left flight: bottom to landing)
+    if (u <= flightWM + 0.05) {
+      const t = Math.max(0, Math.min(1, (stairLengthM - v) / flightRunM));
+      return {
+        inside: true,
+        elevationM: floorElevationM + t * (floorHeightM / 2),
+        isLanding: false,
+      };
+    }
+
+    // Flight 2 (Right flight: landing to upper floor)
+    if (u >= stairWidthM - flightWM - 0.05) {
+      const t = Math.max(0, Math.min(1, (v - landingDepthM) / flightRunM));
+      return {
+        inside: true,
+        elevationM: midElevationM + t * (floorHeightM / 2),
+        isLanding: false,
+      };
+    }
+
+    // Central well gap between flights
+    return { inside: false, elevationM: floorElevationM, isLanding: false };
+  }
+
+  // Straight stair: ascending from v = stairLengthM to v = 0
+  const t = Math.max(0, Math.min(1, (stairLengthM - v) / stairLengthM));
+  return {
+    inside: true,
+    elevationM: floorElevationM + t * floorHeightM,
+    isLanding: false,
+  };
+}
+
+/**
+ * Calculates the 2D polygon bounding box of the staircase in project mm.
+ */
+export function getStairWorldPolygonMm(stair: Staircase): Point2D[] {
+  const { width, length, rotation = 0, position } = stair;
+  const rad = (rotation * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+
+  const localCorners: Point2D[] = [
+    { x: 0, y: 0 },
+    { x: width, y: 0 },
+    { x: width, y: length },
+    { x: 0, y: length },
+  ];
+
+  return localCorners.map((pt) => ({
+    x: position.x + (pt.x * cos - pt.y * sin),
+    y: position.y + (pt.x * sin + pt.y * cos),
+  }));
+}

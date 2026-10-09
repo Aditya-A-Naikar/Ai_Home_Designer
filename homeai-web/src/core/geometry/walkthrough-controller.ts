@@ -1,12 +1,22 @@
 import * as THREE from "three";
-import { Point2D, Room } from "@/core/domain/types";
+import { Point2D, Room, Floor } from "@/core/domain/types";
 import { isPointInPolygon } from "./room-utils";
+import { getStairSurfaceElevation } from "./stair-utils";
 
 /**
- * Phase 11: Architectural First-Person 3D Walkthrough Controller
+ * Phase 11 & Phase 17: Architectural First-Person 3D Walkthrough Controller
  * Handles WASD / Arrow keyboard navigation, mouse-look rotation, eye-height positioning,
- * and real-time room occupancy detection.
+ * real-time room occupancy detection, wall collision avoidance, and multi-storey stair climbing.
  */
+
+export interface WalkthroughOptions {
+  minX?: number;
+  maxX?: number;
+  minZ?: number;
+  maxZ?: number;
+  floors?: Floor[];
+  centerOffset?: { x: number; z: number };
+}
 
 export interface WalkthroughState {
   isWalking: boolean;
@@ -25,9 +35,10 @@ export class WalkthroughController {
   public walkSpeed: number = 3.2; // meters/second
   public sprintSpeed: number = 6.0; // meters/second
   public isSprint: boolean = false;
+  public playerRadiusM: number = 0.35; // Player collision radius
 
   private keys: { [key: string]: boolean } = {};
-  private activeFloorElevationM: number = 0;
+  public activeFloorElevationM: number = 0;
   private isEnabled: boolean = false;
 
   constructor(camera: THREE.PerspectiveCamera) {
@@ -80,10 +91,13 @@ export class WalkthroughController {
     this.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.pitch));
   }
 
-  public update(deltaSeconds: number, bounds?: { minX: number; maxX: number; minZ: number; maxZ: number }): void {
+  public update(
+    deltaSeconds: number,
+    options?: { minX?: number; maxX?: number; minZ?: number; maxZ?: number } | WalkthroughOptions
+  ): void {
     if (!this.isEnabled) return;
 
-    const speed = (this.isSprint ? this.sprintSpeed : this.walkSpeed) * deltaSeconds;
+    const totalSpeed = (this.isSprint ? this.sprintSpeed : this.walkSpeed) * deltaSeconds;
 
     // Calculate forward & right movement vectors from yaw
     const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw)).normalize();
@@ -105,17 +119,133 @@ export class WalkthroughController {
     }
 
     if (moveVector.lengthSq() > 0) {
-      moveVector.normalize().multiplyScalar(speed);
-      this.position.add(moveVector);
+      moveVector.normalize();
     }
 
-    // Lock eye height to active floor elevation datum
-    this.position.y = this.activeFloorElevationM + this.eyeHeightM;
+    const floors = (options as WalkthroughOptions)?.floors;
+    const centerOffset = (options as WalkthroughOptions)?.centerOffset || { x: 0, z: 0 };
+
+    // Substepping prevents tunneling through walls for large timesteps
+    const substeps = Math.max(1, Math.ceil(deltaSeconds / 0.05));
+    const subSpeed = totalSpeed / substeps;
+
+    for (let s = 0; s < substeps; s++) {
+      if (moveVector.lengthSq() > 0) {
+        this.position.x += moveVector.x * subSpeed;
+        this.position.z += moveVector.z * subSpeed;
+      }
+
+      // --- Wall Collision Detection & Sliding per substep ---
+      if (floors && floors.length > 0) {
+        const currentFloor =
+          floors.find((f) => Math.abs((f.elevation || 0) / 1000 - this.activeFloorElevationM) < 0.5) ||
+          floors[0];
+
+        if (currentFloor?.walls) {
+          for (const wall of currentFloor.walls) {
+            const sx = wall.start.x / 1000 - centerOffset.x;
+            const sz = wall.start.y / 1000 - centerOffset.z;
+            const ex = wall.end.x / 1000 - centerOffset.x;
+            const ez = wall.end.y / 1000 - centerOffset.z;
+
+            const wdx = ex - sx;
+            const wdz = ez - sz;
+            const segLenSq = wdx * wdx + wdz * wdz;
+            if (segLenSq < 0.01) continue;
+
+            const t = Math.max(
+              0,
+              Math.min(1, ((this.position.x - sx) * wdx + (this.position.z - sz) * wdz) / segLenSq)
+            );
+            const closestX = sx + t * wdx;
+            const closestZ = sz + t * wdz;
+
+            const distX = this.position.x - closestX;
+            const distZ = this.position.z - closestZ;
+            const dist = Math.hypot(distX, distZ);
+
+            const wallThicknessM = (wall.thickness || 150) / 1000;
+            const minDistance = this.playerRadiusM + wallThicknessM / 2;
+
+            if (dist < minDistance && dist > 0.0001) {
+              const wallLengthM = Math.sqrt(segLenSq);
+              const playerOffsetOnWallM = t * wallLengthM;
+              const inDoorway = wall.doors?.some((d) => {
+                const doorOffsetM = d.offset / 1000;
+                const doorHalfWidthM = (d.width / 1000) / 2;
+                return Math.abs(playerOffsetOnWallM - doorOffsetM) <= doorHalfWidthM;
+              });
+
+              if (!inDoorway) {
+                const overlap = minDistance - dist;
+                this.position.x += (distX / dist) * overlap;
+                this.position.z += (distZ / dist) * overlap;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // --- Vertical Circulation & Stair Climbing Detection ---
+    let onStair = false;
+    let targetSurfaceElevationM = this.activeFloorElevationM;
+
+    if (floors && floors.length > 0) {
+      for (const floor of floors) {
+        const floorElevM = (floor.elevation || 0) / 1000;
+        const floorHeightM = (floor.height || 2800) / 1000;
+
+        if (floor.stairs && floor.stairs.length > 0) {
+          for (const st of floor.stairs) {
+            const stairInfo = getStairSurfaceElevation(
+              st,
+              this.position.x,
+              this.position.z,
+              centerOffset,
+              floorElevM,
+              floorHeightM
+            );
+
+            if (stairInfo.inside) {
+              onStair = true;
+              targetSurfaceElevationM = stairInfo.elevationM;
+              if (targetSurfaceElevationM >= floorElevM + floorHeightM * 0.75) {
+                this.activeFloorElevationM = floorElevM + floorHeightM;
+              } else if (targetSurfaceElevationM <= floorElevM + floorHeightM * 0.25) {
+                this.activeFloorElevationM = floorElevM;
+              }
+              break;
+            }
+          }
+        }
+        if (onStair) break;
+      }
+
+      if (!onStair) {
+        let bestElev = 0;
+        for (const floor of floors) {
+          const elev = (floor.elevation || 0) / 1000;
+          if (this.position.y - this.eyeHeightM >= elev - 0.2) {
+            if (elev > bestElev) bestElev = elev;
+          }
+        }
+        targetSurfaceElevationM = bestElev;
+        this.activeFloorElevationM = bestElev;
+      }
+    }
+
+    // Smooth vertical progression (smooth stair steps & gravity lock)
+    const targetY = targetSurfaceElevationM + this.eyeHeightM;
+    const verticalBlend = Math.min(1, deltaSeconds * 12);
+    this.position.y += (targetY - this.position.y) * verticalBlend;
 
     // Constrain position to plot boundaries if provided
-    if (bounds) {
-      this.position.x = Math.max(bounds.minX, Math.min(bounds.maxX, this.position.x));
-      this.position.z = Math.max(bounds.minZ, Math.min(bounds.maxZ, this.position.z));
+    if (options) {
+      if (typeof options.minX === "number") this.position.x = Math.max(options.minX, this.position.x);
+      if (typeof options.maxX === "number") this.position.x = Math.min(options.maxX, this.position.x);
+      if (typeof options.minZ === "number") this.position.z = Math.max(options.minZ, this.position.z);
+      if (typeof options.maxZ === "number") this.position.z = Math.min(options.maxZ, this.position.z);
     }
 
     // Apply to camera
@@ -127,17 +257,36 @@ export class WalkthroughController {
   }
 
   /**
-   * Identifies which room the user is currently standing inside
+   * Identifies which room the user is currently standing inside across levels
    */
-  public getCurrentRoom(rooms: Room[], centerOffset: { x: number; z: number }): string | null {
-    if (!this.isEnabled || !rooms.length) return null;
+  public getCurrentRoom(
+    rooms: Room[],
+    centerOffset: { x: number; z: number },
+    allFloors?: Floor[]
+  ): string | null {
+    if (!this.isEnabled) return null;
+
+    let searchRooms = rooms;
+    if (allFloors && allFloors.length > 0) {
+      // Find floor closest to current player height
+      const matchingFloor = allFloors.reduce((prev, curr) => {
+        const prevDiff = Math.abs((prev.elevation || 0) / 1000 - this.activeFloorElevationM);
+        const currDiff = Math.abs((curr.elevation || 0) / 1000 - this.activeFloorElevationM);
+        return currDiff < prevDiff ? curr : prev;
+      });
+      if (matchingFloor && matchingFloor.rooms?.length > 0) {
+        searchRooms = matchingFloor.rooms;
+      }
+    }
+
+    if (!searchRooms || !searchRooms.length) return null;
 
     // Convert 3D world meters back to floor plan millimeters
     const pxMm = (this.position.x + centerOffset.x) * 1000;
     const pyMm = (this.position.z + centerOffset.z) * 1000;
     const point: Point2D = { x: pxMm, y: pyMm };
 
-    for (const room of rooms) {
+    for (const room of searchRooms) {
       if (room.polygon && room.polygon.length >= 3) {
         if (isPointInPolygon(point, room.polygon)) {
           return room.name;

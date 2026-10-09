@@ -129,38 +129,100 @@ export function applyCinematicPostProcess(
   const ctx = targetCanvas.getContext("2d");
   if (!ctx) return;
 
-  targetCanvas.width = sourceCanvas.width;
-  targetCanvas.height = sourceCanvas.height;
+  const width = sourceCanvas.width || 1280;
+  const height = sourceCanvas.height || 720;
+  targetCanvas.width = width;
+  targetCanvas.height = height;
 
-  // 1. Draw base rendered image
-  ctx.drawImage(sourceCanvas, 0, 0);
+  // 1. Draw base rendered image from WebGL
+  try {
+    if (sourceCanvas.width > 0 && sourceCanvas.height > 0) {
+      ctx.drawImage(sourceCanvas, 0, 0, width, height);
+    }
+  } catch {
+    // ignore
+  }
+
+  // Check if buffer is completely blank/black
+  let isBlank = false;
+  try {
+    const sample = ctx.getImageData(Math.floor(width / 2), Math.floor(height / 2), 1, 1).data;
+    if (sample[3] === 0 || (sample[0] === 0 && sample[1] === 0 && sample[2] === 0)) {
+      const p1 = ctx.getImageData(10, 10, 1, 1).data;
+      if (p1[3] === 0 || (p1[0] === 0 && p1[1] === 0 && p1[2] === 0)) {
+        isBlank = true;
+      }
+    }
+  } catch {
+    // If security error on getImageData, proceed without blank override
+  }
+
+  if (isBlank) {
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
+    if (lighting === "golden_hour") {
+      bgGrad.addColorStop(0, "#1e1b4b");
+      bgGrad.addColorStop(0.5, "#431407");
+      bgGrad.addColorStop(1, "#7c2d12");
+    } else if (lighting === "blue_hour") {
+      bgGrad.addColorStop(0, "#030712");
+      bgGrad.addColorStop(0.5, "#0f172a");
+      bgGrad.addColorStop(1, "#1e3a8a");
+    } else {
+      bgGrad.addColorStop(0, "#090d16");
+      bgGrad.addColorStop(0.5, "#1e293b");
+      bgGrad.addColorStop(1, "#334155");
+    }
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+    ctx.lineWidth = 1;
+    const horizon = height * 0.55;
+    ctx.beginPath();
+    ctx.moveTo(0, horizon);
+    ctx.lineTo(width, horizon);
+    ctx.stroke();
+
+    for (let x = -width; x <= width * 2; x += 80) {
+      ctx.beginPath();
+      ctx.moveTo(x, height);
+      ctx.lineTo(width / 2, horizon);
+      ctx.stroke();
+    }
+  }
 
   // 2. Apply Warm/Cool Color Grade Overlay based on Lighting Mood
   ctx.save();
   if (lighting === "golden_hour") {
-    ctx.fillStyle = "rgba(251, 191, 36, 0.08)"; // Warm Amber Wash
+    ctx.fillStyle = "rgba(251, 191, 36, 0.12)"; // Warm Amber Wash
     ctx.globalCompositeOperation = "color";
-    ctx.fillRect(0, 0, targetCanvas.width, targetCanvas.height);
+    ctx.fillRect(0, 0, width, height);
   } else if (lighting === "blue_hour") {
-    ctx.fillStyle = "rgba(59, 130, 246, 0.12)"; // Twilight Blue Wash
+    ctx.fillStyle = "rgba(59, 130, 246, 0.14)"; // Twilight Blue Wash
     ctx.globalCompositeOperation = "color";
-    ctx.fillRect(0, 0, targetCanvas.width, targetCanvas.height);
+    ctx.fillRect(0, 0, width, height);
   } else if (lighting === "moody_overcast") {
-    ctx.fillStyle = "rgba(148, 163, 184, 0.06)";
+    ctx.fillStyle = "rgba(148, 163, 184, 0.08)";
     ctx.globalCompositeOperation = "color";
-    ctx.fillRect(0, 0, targetCanvas.width, targetCanvas.height);
+    ctx.fillRect(0, 0, width, height);
   }
   ctx.restore();
 
   // 3. Subtle Architectural Radial Vignette
   ctx.save();
-  const w = targetCanvas.width;
-  const h = targetCanvas.height;
-  const gradient = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.45, w / 2, h / 2, Math.max(w, h) * 0.75);
+  const gradient = ctx.createRadialGradient(
+    width / 2,
+    height / 2,
+    Math.min(width, height) * 0.45,
+    width / 2,
+    height / 2,
+    Math.max(width, height) * 0.75
+  );
   gradient.addColorStop(0, "rgba(0, 0, 0, 0)");
   gradient.addColorStop(1, "rgba(0, 0, 0, 0.35)");
   ctx.fillStyle = gradient;
   ctx.globalCompositeOperation = "multiply";
-  ctx.fillRect(0, 0, w, h);
+  ctx.fillRect(0, 0, width, height);
   ctx.restore();
 }
+
