@@ -153,3 +153,6 @@ export function snapToOrtho(start: Point2D, point: Point2D): Point2D {
     return { x: start.x + signX * avg, y: start.y + signY * avg };
   }
 }
+
+// Stage 2.2: Re-export wall join calculations and footprint algorithms
+export * from "./wall-joins";

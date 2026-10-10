@@ -1,15 +1,30 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import { Project, Wall, Room, Door, Window, Floor, Point2D } from '@/core/domain/types';
+import { Project, Wall, Room, Door, Window, Floor, Point2D, Prop, Staircase, SlabVoid, StructuralColumn, BlueprintUnderlay } from '@/core/domain/types';
+import { PlanGenerationAction } from '@/core/ai/plan-generator';
 import { projectRepository } from '@/infrastructure/persistence/local-storage-project-repository';
-import { autoDetectRooms } from '@/core/geometry/room-utils';
+import { autoDetectRooms, polygonArea, splitRoomByPartitionWall, mergeRoomsAlongSharedWall } from '@/core/geometry/room-utils';
+import { ARCHITECTURAL_DESIGN_PRESETS, applyDesignPresetToProject } from '@/core/geometry/design-presets';
+import { isQuotaError } from '@/core/storage/storage-hardening';
+import { downloadProjectJson } from '@/core/export/json-exporter';
+import { normalizeProject } from '@/core/domain/demo-project';
+import { deriveUpperSlabVoidForStair } from '@/core/geometry/stair-utils';
+import { getImmediateUpperFloor } from '@/core/geometry/floor-utils';
 import { useCanvasStore } from './canvas-store';
+
+export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error' | 'quota_exceeded';
 
 interface ProjectState {
   currentProject: Project | null;
   isSaving: boolean;
   isLoading: boolean;
   error: string | null;
+
+  // Stage 1.2: Unified Persistence & Storage Quota Protection State
+  saveStatus: SaveStatus;
+  saveError: string | null;
+  storageWarning: string | null;
+  lastSavedAt: string | null;
   
   // History stack
   past: Project[];
@@ -19,16 +34,23 @@ interface ProjectState {
 interface ProjectActions {
   loadProject: (id: string) => Promise<void>;
   saveProject: () => Promise<void>;
+  retrySave: () => Promise<void>;
+  backupCurrentProject: () => void;
+  checkStorageQuota: () => void;
   
   // Floor Management
   addFloor: (floor: Floor) => void;
   updateFloor: (floorId: string, updater: (f: Floor) => void) => void;
+  setFloorElevation: (floorId: string, elevation: number) => void;
+  setFloorHeight: (floorId: string, height: number) => void;
   deleteFloor: (floorId: string) => void;
+  setActiveFloor: (floorId: string) => void;
   
   // Walls
   addWall: (floorId: string, wall: Wall) => void;
   updateWall: (floorId: string, wallId: string, updater: (w: Wall) => void) => void;
   updateWallEndpoints: (floorId: string, wallId: string, start: Point2D, end: Point2D) => void;
+  commitWallEdit: (floorId: string, wallId: string) => void;
   deleteWall: (floorId: string, wallId: string) => void;
   
   // Rooms
@@ -46,8 +68,47 @@ interface ProjectActions {
   updateWindow: (floorId: string, wallId: string, windowId: string, updater: (win: Window) => void) => void;
   deleteWindow: (floorId: string, wallId: string, windowId: string) => void;
   
+  // Props / Accessories
+  addProp: (floorId: string, prop: Prop) => void;
+  updateProp: (floorId: string, propId: string, updater: (p: Prop) => void) => void;
+  deleteProp: (floorId: string, propId: string) => void;
+
+  // Vertical Circulation: Stairs
+  addStaircase: (floorId: string, stair: Staircase) => void;
+  updateStaircase: (floorId: string, stairId: string, updater: (s: Staircase) => void) => void;
+  deleteStaircase: (floorId: string, stairId: string) => void;
+
+  // Slab Voids (Double-height & stair cutouts)
+  addSlabVoid: (floorId: string, voidItem: SlabVoid) => void;
+  updateSlabVoid: (floorId: string, voidId: string, updater: (v: SlabVoid) => void) => void;
+  deleteSlabVoid: (floorId: string, voidId: string) => void;
+
+  // Structural Columns
+  addColumn: (floorId: string, col: StructuralColumn) => void;
+  updateColumn: (floorId: string, colId: string, updater: (c: StructuralColumn) => void) => void;
+  deleteColumn: (floorId: string, colId: string) => void;
+
+  // Stage 4.1: Blueprint Reference Underlay & Calibration
+  setBlueprintUnderlay: (floorId: string, underlay: BlueprintUnderlay | null) => void;
+  updateBlueprintUnderlay: (floorId: string, updates: Partial<BlueprintUnderlay>) => void;
+  removeBlueprintUnderlay: (floorId: string) => void;
+
+  // Stage 3: Mandatory Floor Plan Confirmation & Baseline Locking
+  confirmFloorPlan: () => { success: boolean; message: string };
+  reopenFloorPlanForEditing: () => void;
+
+  // 3D Customization & Finishes Studio
+  updateWallFinish: (floorId: string, wallId: string, finishId?: string, colorHex?: string, wallpaper?: string) => void;
+  updateWallFinishBulk: (floorId: string, scope: 'room' | 'all', targetRoomId?: string, finishId?: string, colorHex?: string) => void;
+  updateRoomFloorFinish: (floorId: string, roomId: string, finishId: string) => void;
+  updateFloorFinishBulk: (floorId: string, finishId: string) => void;
+  applyDesignPreset: (presetId: string) => void;
+  updatePropCustomization: (floorId: string, propId: string, customization: { finishMaterial?: string; finishColor?: string; width?: number; depth?: number; height?: number; rotation?: number; position?: Point2D; color?: string }) => void;
+
   undo: () => void;
   redo: () => void;
+  importProject: (project: Project) => Promise<void>;
+  applyPlanGenerationActions: (floorId: string, actions: PlanGenerationAction[], replaceFloor?: boolean) => void;
 }
 
 const MAX_HISTORY = 50;
@@ -62,34 +123,68 @@ function pushHistory(state: ProjectState) {
   }
 }
 
+let inFlightSavePromise: Promise<void> | null = null;
+let saveQueued = false;
+
 export const useProjectStore = create<ProjectState & ProjectActions>()(
   immer((set, get) => ({
     currentProject: null,
     isSaving: false,
     isLoading: false,
     error: null,
+    saveStatus: 'idle',
+    saveError: null,
+    storageWarning: null,
+    lastSavedAt: null,
     past: [],
     future: [],
     
     loadProject: async (id) => {
-      set((state) => { state.isLoading = true; state.error = null; });
+      set((state) => {
+        state.isLoading = true;
+        state.error = null;
+        state.saveError = null;
+      });
       try {
         const project = await projectRepository.getById(id);
         if (!project) throw new Error("Project not found");
         
+        const normalized = normalizeProject(project);
+
+        let quotaWarning: string | null = null;
+        try {
+          const quota = projectRepository.getStorageQuota();
+          if (quota.isNearQuota) {
+            quotaWarning = `Storage is ${Math.round(quota.usagePercentage)}% full. Please export projects to prevent data loss.`;
+          }
+        } catch {
+          // Ignore quota inspection errors
+        }
+
         set((state) => {
-          state.currentProject = project;
+          state.currentProject = normalized;
           state.past = [];
           state.future = [];
           state.isLoading = false;
+          state.saveStatus = 'saved';
+          state.saveError = null;
+          state.storageWarning = quotaWarning;
+          state.lastSavedAt = normalized.metadata?.updatedAt || new Date().toISOString();
         });
         
-        useCanvasStore.getState().setActiveProject(id);
-        useCanvasStore.getState().setActiveFloor(project.activeFloorId);
+        const canvasStore = useCanvasStore.getState();
+        canvasStore.setActiveProject(normalized.id);
+        canvasStore.setActiveFloor(normalized.activeFloorId);
+        canvasStore.selectElement(null);
+        canvasStore.selectSubElement(null);
+        canvasStore.markModified(false);
       } catch (err: unknown) {
         set((state) => {
-          state.error = (err as Error).message;
+          const msg = (err as Error).message || "Failed to load project";
+          state.error = msg;
           state.isLoading = false;
+          state.saveStatus = 'error';
+          state.saveError = msg;
         });
       }
     },
@@ -97,28 +192,125 @@ export const useProjectStore = create<ProjectState & ProjectActions>()(
     saveProject: async () => {
       const { currentProject } = get();
       if (!currentProject) return;
-      
-      set((state) => { state.isSaving = true; });
-      try {
-        const updated = {
-          ...currentProject,
-          metadata: {
-            ...currentProject.metadata,
-            updatedAt: new Date().toISOString()
+
+      if (inFlightSavePromise) {
+        saveQueued = true;
+        await inFlightSavePromise;
+        if (saveQueued) {
+          saveQueued = false;
+          return get().saveProject();
+        }
+        return;
+      }
+
+      set((state) => {
+        state.isSaving = true;
+        state.saveStatus = 'saving';
+        state.saveError = null;
+      });
+
+      const executeSave = async () => {
+        try {
+          const updated = {
+            ...currentProject,
+            metadata: {
+              ...currentProject.metadata,
+              updatedAt: new Date().toISOString(),
+            },
+          };
+          await projectRepository.save(updated);
+
+          let quotaWarning: string | null = null;
+          try {
+            const quota = projectRepository.getStorageQuota();
+            if (quota.isNearQuota) {
+              quotaWarning = `Storage is ${Math.round(quota.usagePercentage)}% full. Please export projects to prevent data loss.`;
+            }
+          } catch {
+            // Ignore
           }
-        };
-        await projectRepository.save(updated);
+
+          set((state) => {
+            state.currentProject = updated;
+            state.isSaving = false;
+            state.saveStatus = 'saved';
+            state.saveError = null;
+            state.storageWarning = quotaWarning;
+            state.lastSavedAt = updated.metadata.updatedAt;
+          });
+          useCanvasStore.getState().markModified(false);
+        } catch (err: unknown) {
+          const isQuota = isQuotaError(err);
+          const errorMsg = (err as Error).message || "Failed to save project.";
+          set((state) => {
+            state.isSaving = false;
+            state.saveStatus = isQuota ? 'quota_exceeded' : 'error';
+            state.saveError = errorMsg;
+            // CRITICAL: currentProject is kept strictly intact in memory!
+          });
+        } finally {
+          inFlightSavePromise = null;
+        }
+      };
+
+      inFlightSavePromise = executeSave();
+      await inFlightSavePromise;
+    },
+
+    retrySave: async () => {
+      await get().saveProject();
+    },
+
+    backupCurrentProject: () => {
+      const { currentProject } = get();
+      if (currentProject) {
+        downloadProjectJson(currentProject);
+      }
+    },
+
+    checkStorageQuota: () => {
+      try {
+        const quota = projectRepository.getStorageQuota();
         set((state) => {
-          state.currentProject = updated;
-          state.isSaving = false;
+          state.storageWarning = quota.isNearQuota
+            ? `Storage is ${Math.round(quota.usagePercentage)}% full. Please export projects to prevent data loss.`
+            : null;
         });
-        useCanvasStore.getState().markModified(false);
-      } catch (err: unknown) {
+      } catch {
+        // Ignore
+      }
+    },
+
+    importProject: async (project: Project) => {
+      const normalized = normalizeProject(project);
+      set((state) => {
+        state.currentProject = normalized;
+        state.past = [];
+        state.future = [];
+        state.isLoading = false;
+        state.error = null;
+        state.saveStatus = 'saving';
+        state.saveError = null;
+      });
+      try {
+        await projectRepository.save(normalized);
         set((state) => {
-          state.error = (err as Error).message;
-          state.isSaving = false;
+          state.saveStatus = 'saved';
+          state.lastSavedAt = new Date().toISOString();
+        });
+      } catch (err: unknown) {
+        const isQuota = isQuotaError(err);
+        set((state) => {
+          state.saveStatus = isQuota ? 'quota_exceeded' : 'error';
+          state.saveError = (err as Error).message || "Failed to save imported project.";
         });
       }
+      const canvasStore = useCanvasStore.getState();
+      canvasStore.setActiveProject(normalized.id);
+      canvasStore.setActiveFloor(normalized.activeFloorId);
+      canvasStore.selectElement(null);
+      canvasStore.selectSubElement(null);
+      canvasStore.markModified(false);
     },
     
     addFloor: (floor) => set((state) => {
@@ -133,23 +325,81 @@ export const useProjectStore = create<ProjectState & ProjectActions>()(
       if (floor) updater(floor);
       useCanvasStore.getState().markModified(true);
     }),
+
+    setFloorElevation: (floorId, elevation) => set((state) => {
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      if (floor && Number.isFinite(elevation)) {
+        pushHistory(state);
+        floor.elevation = elevation;
+        useCanvasStore.getState().markModified(true);
+      }
+    }),
+
+    setFloorHeight: (floorId, height) => set((state) => {
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      if (floor && Number.isFinite(height) && height > 0) {
+        pushHistory(state);
+        floor.height = height;
+        useCanvasStore.getState().markModified(true);
+      }
+    }),
     
     deleteFloor: (floorId) => set((state) => {
       if (!state.currentProject) return;
       if (state.currentProject.floors.length <= 1) return;
       pushHistory(state);
+      const floorToDelete = state.currentProject.floors.find(f => f.id === floorId);
+      const stairIds = (floorToDelete?.stairs || []).map(s => s.id);
+
       state.currentProject.floors = state.currentProject.floors.filter(f => f.id !== floorId);
+
+      // Clean up orphaned stair voids on remaining floors
+      state.currentProject.floors.forEach(f => {
+        if (f.voids) {
+          f.voids = f.voids.filter(v => !stairIds.some(sid => v.id === `stair-void-${sid}`));
+        }
+      });
+
       if (state.currentProject.activeFloorId === floorId) {
         state.currentProject.activeFloorId = state.currentProject.floors[0].id;
         useCanvasStore.getState().setActiveFloor(state.currentProject.activeFloorId);
       }
       useCanvasStore.getState().markModified(true);
     }),
+
+    setActiveFloor: (floorId) => set((state) => {
+      if (state.currentProject && state.currentProject.floors.some(f => f.id === floorId)) {
+        state.currentProject.activeFloorId = floorId;
+        useCanvasStore.getState().setActiveFloor(floorId);
+      }
+    }),
     
     addWall: (floorId, wall) => set((state) => {
       pushHistory(state);
       const floor = state.currentProject?.floors.find(f => f.id === floorId);
-      if (floor) floor.walls.push(wall);
+      if (floor) {
+        floor.walls.push(wall);
+
+        // Stage 2.1: Automatic Room Splitting on partition wall creation
+        if (floor.rooms && floor.rooms.length > 0) {
+          const updatedRooms: Room[] = [];
+          let anySplit = false;
+
+          for (const room of floor.rooms) {
+            const splitResult = splitRoomByPartitionWall(room, wall);
+            if (splitResult) {
+              updatedRooms.push(splitResult.primaryRoom, splitResult.secondaryRoom);
+              anySplit = true;
+            } else {
+              updatedRooms.push(room);
+            }
+          }
+
+          if (anySplit) {
+            floor.rooms = updatedRooms;
+          }
+        }
+      }
       useCanvasStore.getState().markModified(true);
     }),
     
@@ -171,11 +421,52 @@ export const useProjectStore = create<ProjectState & ProjectActions>()(
       }
       useCanvasStore.getState().markModified(true);
     }),
+
+    commitWallEdit: (floorId, wallId) => set((state) => {
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      const wall = floor?.walls.find(w => w.id === wallId);
+      if (floor && wall && floor.rooms && floor.rooms.length > 0) {
+        const updatedRooms: Room[] = [];
+        let anySplit = false;
+
+        for (const room of floor.rooms) {
+          const splitResult = splitRoomByPartitionWall(room, wall);
+          if (splitResult) {
+            updatedRooms.push(splitResult.primaryRoom, splitResult.secondaryRoom);
+            anySplit = true;
+          } else {
+            updatedRooms.push(room);
+          }
+        }
+
+        if (anySplit) {
+          pushHistory(state);
+          floor.rooms = updatedRooms;
+          useCanvasStore.getState().markModified(true);
+        }
+      }
+    }),
     
     deleteWall: (floorId, wallId) => set((state) => {
       pushHistory(state);
       const floor = state.currentProject?.floors.find(f => f.id === floorId);
       if (floor) {
+        const wallToDelete = floor.walls.find(w => w.id === wallId);
+        if (wallToDelete && floor.rooms && floor.rooms.length >= 2) {
+          let merged = false;
+          for (let i = 0; i < floor.rooms.length && !merged; i++) {
+            for (let j = i + 1; j < floor.rooms.length && !merged; j++) {
+              const r1 = floor.rooms[i];
+              const r2 = floor.rooms[j];
+              const mergedRoom = mergeRoomsAlongSharedWall(r1, r2, wallToDelete);
+              if (mergedRoom) {
+                floor.rooms[i] = mergedRoom;
+                floor.rooms.splice(j, 1);
+                merged = true;
+              }
+            }
+          }
+        }
         floor.walls = floor.walls.filter(w => w.id !== wallId);
       }
       useCanvasStore.getState().markModified(true);
@@ -280,6 +571,186 @@ export const useProjectStore = create<ProjectState & ProjectActions>()(
       }
       useCanvasStore.getState().markModified(true);
     }),
+
+    addProp: (floorId, prop) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      if (floor) {
+        if (!floor.props) floor.props = [];
+        floor.props.push(prop);
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    updateProp: (floorId, propId, updater) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      const prop = floor?.props?.find(p => p.id === propId);
+      if (prop) updater(prop);
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    deleteProp: (floorId, propId) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      if (floor && floor.props) {
+        floor.props = floor.props.filter(p => p.id !== propId);
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    // Stairs
+    addStaircase: (floorId, stair) => set((state) => {
+      pushHistory(state);
+      if (!state.currentProject) return;
+      const floor = state.currentProject.floors.find(f => f.id === floorId);
+      if (floor) {
+        if (!floor.stairs) floor.stairs = [];
+        floor.stairs.push(stair);
+
+        // Synchronize upper floor slab void opening
+        const upperFloor = getImmediateUpperFloor(state.currentProject.floors, floor);
+        if (upperFloor && stair.direction === 'up') {
+          const voidItem = deriveUpperSlabVoidForStair(stair, floor, upperFloor);
+          if (!upperFloor.voids) upperFloor.voids = [];
+          upperFloor.voids = upperFloor.voids.filter(v => v.id !== voidItem.id);
+          upperFloor.voids.push(voidItem);
+        }
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    updateStaircase: (floorId, stairId, updater) => set((state) => {
+      pushHistory(state);
+      if (!state.currentProject) return;
+      const floor = state.currentProject.floors.find(f => f.id === floorId);
+      const stair = floor?.stairs?.find(s => s.id === stairId);
+      if (floor && stair) {
+        updater(stair);
+
+        // Synchronize upper floor slab void opening
+        const upperFloor = getImmediateUpperFloor(state.currentProject.floors, floor);
+        if (upperFloor) {
+          const voidId = `stair-void-${stair.id}`;
+          if (stair.direction === 'up') {
+            const voidItem = deriveUpperSlabVoidForStair(stair, floor, upperFloor);
+            if (!upperFloor.voids) upperFloor.voids = [];
+            const idx = upperFloor.voids.findIndex(v => v.id === voidId);
+            if (idx >= 0) {
+              upperFloor.voids[idx] = voidItem;
+            } else {
+              upperFloor.voids.push(voidItem);
+            }
+          } else {
+            if (upperFloor.voids) {
+              upperFloor.voids = upperFloor.voids.filter(v => v.id !== voidId);
+            }
+          }
+        }
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    deleteStaircase: (floorId, stairId) => set((state) => {
+      pushHistory(state);
+      if (!state.currentProject) return;
+      const floor = state.currentProject.floors.find(f => f.id === floorId);
+      if (floor && floor.stairs) {
+        floor.stairs = floor.stairs.filter(s => s.id !== stairId);
+      }
+      // Remove linked slab void from all floors
+      const voidId = `stair-void-${stairId}`;
+      state.currentProject.floors.forEach(f => {
+        if (f.voids) {
+          f.voids = f.voids.filter(v => v.id !== voidId);
+        }
+      });
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    // Slab Voids
+    addSlabVoid: (floorId, voidItem) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      if (floor) {
+        if (!floor.voids) floor.voids = [];
+        floor.voids.push(voidItem);
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    updateSlabVoid: (floorId, voidId, updater) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      const voidItem = floor?.voids?.find(v => v.id === voidId);
+      if (voidItem) updater(voidItem);
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    deleteSlabVoid: (floorId, voidId) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      if (floor && floor.voids) {
+        floor.voids = floor.voids.filter(v => v.id !== voidId);
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    // Columns
+    addColumn: (floorId, col) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      if (floor) {
+        if (!floor.columns) floor.columns = [];
+        floor.columns.push(col);
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    updateColumn: (floorId, colId, updater) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      const col = floor?.columns?.find(c => c.id === colId);
+      if (col) updater(col);
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    deleteColumn: (floorId, colId) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      if (floor && floor.columns) {
+        floor.columns = floor.columns.filter(c => c.id !== colId);
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    // Blueprint Reference Underlay (Stage 4.1)
+    setBlueprintUnderlay: (floorId, underlay) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      if (floor) {
+        floor.blueprintUnderlay = underlay || undefined;
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    updateBlueprintUnderlay: (floorId, updates) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      if (floor && floor.blueprintUnderlay) {
+        Object.assign(floor.blueprintUnderlay, updates);
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    removeBlueprintUnderlay: (floorId) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      if (floor) {
+        floor.blueprintUnderlay = undefined;
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
     
     undo: () => set((state) => {
       if (state.past.length === 0 || !state.currentProject) return;
@@ -295,6 +766,279 @@ export const useProjectStore = create<ProjectState & ProjectActions>()(
       state.past.push(JSON.parse(JSON.stringify(state.currentProject)));
       state.currentProject = next;
       useCanvasStore.getState().markModified(true);
-    })
+    }),
+
+    applyPlanGenerationActions: (floorId, actions, replaceFloor = false) => set((state) => {
+      if (!state.currentProject) return;
+      pushHistory(state);
+      const defaultFloor = state.currentProject.floors.find(f => f.id === floorId) || state.currentProject.floors[0];
+      if (!defaultFloor) return;
+
+      const affectedFloorIds = new Set<string>();
+      for (const act of actions) {
+        if (act.floorId) affectedFloorIds.add(act.floorId);
+      }
+      if (affectedFloorIds.size === 0) affectedFloorIds.add(defaultFloor.id);
+
+      // If replacing floor, clear all affected floors
+      if (replaceFloor) {
+        for (const fId of affectedFloorIds) {
+          const fl = state.currentProject.floors.find(f => f.id === fId);
+          if (fl) {
+            fl.walls = [];
+            fl.rooms = [];
+            fl.props = [];
+            fl.stairs = [];
+            fl.voids = [];
+            fl.columns = [];
+          }
+        }
+      }
+
+      for (const act of actions) {
+        const targetFloorId = act.floorId || defaultFloor.id;
+        let targetFloor = state.currentProject.floors.find(f => f.id === targetFloorId);
+        if (!targetFloor) {
+          const isL1 = targetFloorId.includes('1') || targetFloorId.includes('first') || targetFloorId.includes('ff');
+          const newFloor: Floor = {
+            id: targetFloorId,
+            projectId: state.currentProject.id,
+            name: isL1 ? 'First Floor (Level 1)' : `Floor ${state.currentProject.floors.length}`,
+            level: isL1 ? 1 : state.currentProject.floors.length,
+            elevation: isL1 ? 3000 : state.currentProject.floors.length * 3000,
+            height: 3000,
+            walls: [],
+            rooms: [],
+            props: [],
+            stairs: [],
+            voids: [],
+            columns: [],
+          };
+          state.currentProject.floors.push(newFloor);
+          targetFloor = newFloor;
+        }
+
+        if (!targetFloor.props) targetFloor.props = [];
+        if (!targetFloor.stairs) targetFloor.stairs = [];
+        if (!targetFloor.voids) targetFloor.voids = [];
+        if (!targetFloor.columns) targetFloor.columns = [];
+
+        const curFloor = targetFloor;
+        if (act.type === 'add_wall' && act.wall) {
+          curFloor.walls.push(act.wall);
+        } else if (act.type === 'add_room' && act.room) {
+          curFloor.rooms.push(act.room);
+        } else if (act.type === 'add_prop' && act.prop) {
+          if (!curFloor.props) curFloor.props = [];
+          curFloor.props.push(act.prop);
+        } else if (act.type === 'add_door' && act.door) {
+          const wall = curFloor.walls.find(w => w.id === act.door?.wallId);
+          if (wall) wall.doors.push(act.door);
+        } else if (act.type === 'add_window' && act.window) {
+          const wall = curFloor.walls.find(w => w.id === act.window?.wallId);
+          if (wall) wall.windows.push(act.window);
+        } else if (act.type === 'add_staircase' && act.staircase) {
+          if (!curFloor.stairs) curFloor.stairs = [];
+          curFloor.stairs.push(act.staircase);
+          const upperFloor = getImmediateUpperFloor(state.currentProject.floors, curFloor);
+          if (upperFloor && act.staircase.direction === 'up') {
+            const voidItem = deriveUpperSlabVoidForStair(act.staircase, curFloor, upperFloor);
+            if (!upperFloor.voids) upperFloor.voids = [];
+            upperFloor.voids = upperFloor.voids.filter(v => v.id !== voidItem.id);
+            upperFloor.voids.push(voidItem);
+          }
+        } else if (act.type === 'add_void' && act.void) {
+          if (!curFloor.voids) curFloor.voids = [];
+          curFloor.voids.push(act.void);
+        } else if (act.type === 'add_column' && act.column) {
+          if (!curFloor.columns) curFloor.columns = [];
+          curFloor.columns.push(act.column);
+        } else if (act.type === 'update_prop' && act.propId) {
+          const propToUpdate = curFloor.props?.find(p => p.id === act.propId);
+          if (propToUpdate && act.propUpdates) {
+            Object.assign(propToUpdate, act.propUpdates);
+          }
+        } else if (act.type === 'update_wall_finish' && act.wallFinish) {
+          curFloor.walls.forEach(w => {
+            w.finishId = act.wallFinish;
+            if (act.color) w.colorHex = act.color;
+          });
+        } else if (act.type === 'update_floor_finish' && act.floorFinish) {
+          curFloor.rooms.forEach(r => {
+            r.floorFinishId = act.floorFinish;
+          });
+        } else if (act.type === 'apply_preset' && act.presetId && state.currentProject) {
+          applyDesignPresetToProject(state.currentProject, act.presetId);
+        }
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    confirmFloorPlan: () => {
+      const { currentProject } = get();
+      if (!currentProject) {
+        return { success: false, message: "No active project found." };
+      }
+
+      const activeFloor = currentProject.floors.find(f => f.id === currentProject.activeFloorId) || currentProject.floors[0];
+      if (!activeFloor || (activeFloor.walls.length === 0 && activeFloor.rooms.length === 0)) {
+        return { success: false, message: "Floor plan cannot be confirmed because it has no walls or rooms. Please create or generate a layout first." };
+      }
+
+      // Calculate summary metrics
+      let roomCount = 0;
+      let wallCount = 0;
+      let stairCount = 0;
+      let totalAreaSqMm = 0;
+
+      currentProject.floors.forEach(f => {
+        roomCount += f.rooms.length;
+        wallCount += f.walls.length;
+        stairCount += (f.stairs?.length || 0);
+        f.rooms.forEach(r => {
+          if (r.polygon && r.polygon.length >= 3) {
+            totalAreaSqMm += polygonArea(r.polygon);
+          }
+        });
+      });
+
+      const totalAreaSqM = Math.round(totalAreaSqMm / 1_000_000);
+      const nextVersion = (currentProject.designVersion || 0) + 1;
+
+      set((state) => {
+        pushHistory(state);
+        if (state.currentProject) {
+          state.currentProject.floorPlanStatus = "confirmed";
+          state.currentProject.designVersion = nextVersion;
+          state.currentProject.designBaseline = {
+            confirmedAt: new Date().toISOString(),
+            version: nextVersion,
+            snapshotJson: JSON.stringify(state.currentProject.floors),
+            summary: {
+              roomCount,
+              wallCount,
+              stairCount,
+              totalAreaSqM
+            }
+          };
+        }
+        useCanvasStore.getState().markModified(true);
+        useCanvasStore.getState().setViewMode('3d');
+      });
+
+      get().saveProject();
+
+      return {
+        success: true,
+        message: `Floor plan confirmed and locked as Design Baseline v${nextVersion} (${totalAreaSqM} m² / ${roomCount} rooms). Welcome to the 3D Architectural Customization Studio!`
+      };
+    },
+
+    reopenFloorPlanForEditing: () => set((state) => {
+      pushHistory(state);
+      if (state.currentProject) {
+        state.currentProject.floorPlanStatus = "draft";
+      }
+      useCanvasStore.getState().markModified(true);
+      useCanvasStore.getState().setViewMode('2d');
+    }),
+
+    updateWallFinish: (floorId, wallId, finishId, colorHex, wallpaper) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      const wall = floor?.walls.find(w => w.id === wallId);
+      if (wall) {
+        wall.finishId = finishId;
+        if (colorHex !== undefined) wall.colorHex = colorHex;
+        if (wallpaper !== undefined) wall.wallpaperPattern = wallpaper;
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    updateWallFinishBulk: (floorId, scope, targetRoomId, finishId, colorHex) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      if (!floor) return;
+
+      if (scope === 'all') {
+        floor.walls.forEach(w => {
+          if (finishId) w.finishId = finishId;
+          if (colorHex) w.colorHex = colorHex;
+        });
+      } else if (scope === 'room' && targetRoomId) {
+        const room = floor.rooms.find(r => r.id === targetRoomId);
+        if (room) {
+          room.wallFinishId = finishId;
+          floor.walls.forEach(w => {
+            if (finishId) w.finishId = finishId;
+            if (colorHex) w.colorHex = colorHex;
+          });
+        }
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    updateRoomFloorFinish: (floorId, roomId, finishId) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      const room = floor?.rooms.find(r => r.id === roomId);
+      if (room) {
+        room.floorFinishId = finishId;
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    updateFloorFinishBulk: (floorId, finishId) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      if (floor) {
+        floor.rooms.forEach(r => {
+          r.floorFinishId = finishId;
+        });
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    applyDesignPreset: (presetId) => set((state) => {
+      const preset = ARCHITECTURAL_DESIGN_PRESETS[presetId];
+      if (!preset || !state.currentProject) return;
+
+      pushHistory(state);
+      state.currentProject.activeDesignPreset = presetId;
+      state.currentProject.floors.forEach(floor => {
+        floor.rooms.forEach(r => {
+          r.floorFinishId = preset.floorFinish;
+          r.wallFinishId = preset.wallFinish;
+        });
+        floor.walls.forEach(w => {
+          w.finishId = preset.wallFinish;
+          w.colorHex = preset.primaryColor;
+        });
+      });
+      useCanvasStore.getState().markModified(true);
+    }),
+
+    updatePropCustomization: (floorId, propId, customization) => set((state) => {
+      pushHistory(state);
+      const floor = state.currentProject?.floors.find(f => f.id === floorId);
+      const prop = floor?.props?.find(p => p.id === propId);
+      if (prop) {
+        if (customization.finishMaterial !== undefined) prop.finishMaterial = customization.finishMaterial;
+        if (customization.finishColor !== undefined) {
+          prop.finishColor = customization.finishColor;
+          prop.color = customization.finishColor;
+        }
+        if (customization.color !== undefined) {
+          prop.color = customization.color;
+          prop.finishColor = customization.color;
+        }
+        if (customization.rotation !== undefined) prop.rotation = customization.rotation;
+        if (customization.position !== undefined) prop.position = customization.position;
+        if (customization.width !== undefined) prop.dimensions.width = customization.width;
+        if (customization.depth !== undefined) prop.dimensions.depth = customization.depth;
+        if (customization.height !== undefined) prop.dimensions.height = customization.height;
+      }
+      useCanvasStore.getState().markModified(true);
+    }),
   }))
 );

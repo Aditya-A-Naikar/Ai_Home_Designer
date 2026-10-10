@@ -2,129 +2,137 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Menu, X, Home } from "lucide-react";
+import { Menu, X, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface NavLink {
   label: string;
   href: string;
+  badge?: string;
 }
 
 const navLinks: NavLink[] = [
-  { label: "How it works", href: "#how-it-works" },
-  { label: "Features", href: "#features" },
-  { label: "Safety", href: "#safety" },
+  { label: "Features", href: "/#features" },
+  { label: "How It Works", href: "/#how-it-works" },
+  { label: "Standards", href: "/#safety" },
+  { label: "Sample Villa", href: "/projects/demo" },
 ];
 
-/**
- * Responsive sticky navigation bar with mobile hamburger menu.
- * Accessible: keyboard-navigable, visible focus states, aria-expanded on toggle button.
- */
 export function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  const linkClass =
-    "text-sm font-medium text-slate-600 transition-colors hover:text-indigo-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 rounded";
-
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+    <header className="sticky top-0 z-50 w-full border-b border-slate-800 bg-[#090d16]/95 backdrop-blur-md transition-all text-white">
       <nav
-        className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8"
+        className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8"
         aria-label="Main navigation"
       >
-        {/* Logo */}
-        <Link
-          href="/"
-          className="flex items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
-          aria-label="HomeAI Designer — Home"
-        >
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600">
-            <Home className="h-4 w-4 text-white" aria-hidden="true" />
-          </div>
-          <span className="text-lg font-bold tracking-tight text-slate-900">
-            HomeAI <span className="text-indigo-600">Designer</span>
-          </span>
-        </Link>
+        {/* Brand identity */}
+        <div className="flex items-center gap-8">
+          <Link
+            href="/"
+            className="flex items-center gap-2.5 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 rounded-md"
+            aria-label="HomeAI Designer — Home"
+          >
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-cyan-500 text-slate-950 font-bold text-xs shadow-xs transition-transform group-hover:scale-105">
+              AI
+            </div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-sm font-bold tracking-tight text-white">
+                HomeAI
+              </span>
+              <span className="text-xs uppercase tracking-wider text-cyan-400 font-semibold">
+                Designer
+              </span>
+            </div>
+          </Link>
 
-        {/* Desktop nav links */}
-        <ul className="hidden items-center gap-8 md:flex" role="list">
-          {navLinks.map((link) => (
-            <li key={link.href}>
-              <Link href={link.href} className={linkClass}>
-                {link.label}
-              </Link>
-            </li>
-          ))}
-        </ul>
+          {/* Desktop Navigation Links */}
+          <ul className="hidden items-center gap-6 md:flex" role="list">
+            {navLinks.map((link) => (
+              <li key={link.label}>
+                <Link
+                  href={link.href}
+                  className="text-xs font-medium text-slate-400 hover:text-cyan-400 transition-colors flex items-center gap-1.5 py-1"
+                >
+                  <span>{link.label}</span>
+                  {link.badge && (
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-800 text-cyan-300 border border-slate-700">
+                      {link.badge}
+                    </span>
+                  )}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
 
-        {/* Desktop CTAs */}
-        <div className="hidden items-center gap-3 md:flex">
+        {/* Right CTA Actions */}
+        <div className="hidden items-center gap-2.5 md:flex">
           <Link
             href="/dashboard"
-            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+            className="h-8 px-3 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/80 transition-colors flex items-center gap-1.5"
           >
-            My Projects
+            <span>My Projects</span>
           </Link>
+
           <Link
             href="/projects/new"
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+            className="h-8 px-3.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-semibold transition-all flex items-center gap-1.5 shadow-sm active:translate-y-0.5"
           >
-            Start Designing
+            <Plus className="h-3.5 w-3.5 text-slate-950" />
+            <span>New Project</span>
           </Link>
         </div>
 
         {/* Mobile menu toggle */}
         <button
           type="button"
-          className="rounded-md p-2 text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 md:hidden"
+          className="rounded-md p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 md:hidden cursor-pointer"
           aria-expanded={isMenuOpen}
           aria-controls="mobile-menu"
           aria-label={isMenuOpen ? "Close menu" : "Open menu"}
           onClick={() => setIsMenuOpen((prev) => !prev)}
         >
-          {isMenuOpen ? (
-            <X className="h-5 w-5" aria-hidden="true" />
-          ) : (
-            <Menu className="h-5 w-5" aria-hidden="true" />
-          )}
+          {isMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
       </nav>
 
-      {/* Mobile dropdown */}
+      {/* Mobile Dropdown Menu */}
       <div
         id="mobile-menu"
         className={cn(
-          "border-t border-slate-200 bg-white md:hidden",
+          "border-t border-slate-800 bg-[#090d16] px-4 pt-3 pb-4 md:hidden",
           isMenuOpen ? "block" : "hidden"
         )}
       >
-        <ul className="flex flex-col gap-1 px-4 py-3" role="list">
+        <ul className="space-y-2 mb-4" role="list">
           {navLinks.map((link) => (
-            <li key={link.href}>
+            <li key={link.label}>
               <Link
                 href={link.href}
-                className="block rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-indigo-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                 onClick={() => setIsMenuOpen(false)}
+                className="block py-2 text-xs font-medium text-slate-300 hover:text-cyan-400"
               >
                 {link.label}
               </Link>
             </li>
           ))}
         </ul>
-        <div className="flex flex-col gap-2 px-4 pb-4">
+        <div className="flex flex-col gap-2 pt-2 border-t border-slate-800">
           <Link
             href="/dashboard"
-            className="block rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-center text-sm font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
             onClick={() => setIsMenuOpen(false)}
+            className="w-full text-center py-2 text-xs font-semibold border border-slate-700 rounded-lg text-slate-300 hover:bg-slate-800"
           >
             My Projects
           </Link>
           <Link
             href="/projects/new"
-            className="block rounded-lg bg-indigo-600 px-4 py-2.5 text-center text-sm font-medium text-white hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
             onClick={() => setIsMenuOpen(false)}
+            className="w-full text-center py-2 text-xs font-bold bg-cyan-500 text-slate-950 rounded-lg hover:bg-cyan-400"
           >
-            Start Designing
+            Create New Project
           </Link>
         </div>
       </div>

@@ -1,5 +1,176 @@
 import { Project } from "./types";
 import { ProjectSchema } from "./schema";
+import { polygonArea } from "../geometry/room-utils";
+import { generateId } from "./project-factory";
+
+/**
+ * Normalizes a project data model:
+ * 1. Guarantees deep clone isolation so template instances do not share mutable nested references.
+ * 2. Initializes all required and optional collections across floors (props, stairs, voids, columns, MEP points).
+ * 3. Validates and recalculates dependent metadata (e.g. room area calculations from polygon vertices).
+ * 4. Strictly validates against ProjectSchema before returning.
+ */
+export function normalizeProject(project: Project): Project {
+  if (!project || typeof project !== "object") {
+    throw new Error("Invalid project: expected a non-null object.");
+  }
+
+  // Deep clone to ensure zero shared mutable references
+  const cloned: Project = JSON.parse(JSON.stringify(project));
+
+  if (!cloned.schemaVersion) {
+    cloned.schemaVersion = 1;
+  }
+
+  if (!cloned.settings) {
+    cloned.settings = {
+      preferredUnit: "mm",
+      unitSystem: "metric",
+      gridSize: 100,
+      snapTolerance: 10,
+      defaultWallThickness: 150,
+      defaultCeilingHeight: 2800,
+    };
+  }
+
+  if (!cloned.preferences) {
+    cloned.preferences = {
+      style: "modern",
+      priorities: [],
+      constraints: [],
+    };
+  }
+
+  const now = new Date().toISOString();
+  if (!cloned.metadata) {
+    cloned.metadata = { createdAt: now, updatedAt: now };
+  } else {
+    if (!cloned.metadata.createdAt) cloned.metadata.createdAt = now;
+    if (!cloned.metadata.updatedAt) cloned.metadata.updatedAt = now;
+  }
+
+  if (!cloned.floors || !Array.isArray(cloned.floors) || cloned.floors.length === 0) {
+    throw new Error("Project must contain at least one floor.");
+  }
+
+  cloned.floors = cloned.floors.map((floor, floorIndex) => {
+    const floorId = floor.id || `floor-${floorIndex}`;
+    const walls = (floor.walls || []).map((w, wallIndex) => ({
+      ...w,
+      id: w.id || `wall-${floorIndex}-${wallIndex}`,
+      floorId,
+      thickness: w.thickness || cloned.settings?.defaultWallThickness || 150,
+      doors: (w.doors || []).map((d, dIdx) => ({
+        ...d,
+        id: d.id || `door-${floorIndex}-${wallIndex}-${dIdx}`,
+        wallId: w.id || `wall-${floorIndex}-${wallIndex}`,
+        floorId,
+        offset: typeof d.offset === "number" ? d.offset : 1000,
+        width: d.width || 900,
+        height: d.height || 2100,
+        swingDirection: d.swingDirection || "inward_left",
+      })),
+      windows: (w.windows || []).map((win, winIdx) => ({
+        ...win,
+        id: win.id || `win-${floorIndex}-${wallIndex}-${winIdx}`,
+        wallId: w.id || `wall-${floorIndex}-${wallIndex}`,
+        floorId,
+        offset: typeof win.offset === "number" ? win.offset : 1000,
+        width: win.width || 1200,
+        height: win.height || 1200,
+        sillHeight: typeof win.sillHeight === "number" ? win.sillHeight : 900,
+      })),
+    }));
+
+    const rooms = (floor.rooms || []).map((r, roomIndex) => {
+      const computedArea = r.polygon ? polygonArea(r.polygon) : 0;
+      return {
+        ...r,
+        id: r.id || `room-${floorIndex}-${roomIndex}`,
+        floorId,
+        name: r.name || `Room ${roomIndex + 1}`,
+        polygon: r.polygon || [],
+        color: r.color || "#e0e7ff",
+        targetArea: typeof r.targetArea === "number" && r.targetArea > 0 ? r.targetArea : computedArea,
+      };
+    });
+
+    return {
+      ...floor,
+      id: floorId,
+      projectId: cloned.id,
+      level: typeof floor.level === "number" ? floor.level : floorIndex,
+      name: floor.name || (floorIndex === 0 ? "Ground Floor" : `Floor ${floorIndex}`),
+      elevation: typeof floor.elevation === "number" ? floor.elevation : floorIndex * 2800,
+      height: floor.height || cloned.settings?.defaultCeilingHeight || 2800,
+      walls,
+      rooms,
+      props: Array.isArray(floor.props) ? floor.props : [],
+      stairs: Array.isArray(floor.stairs) ? floor.stairs : [],
+      voids: Array.isArray(floor.voids) ? floor.voids : [],
+      columns: Array.isArray(floor.columns) ? floor.columns : [],
+      electricalPoints: Array.isArray(floor.electricalPoints) ? floor.electricalPoints : [],
+      plumbingFixtures: Array.isArray(floor.plumbingFixtures) ? floor.plumbingFixtures : [],
+      hvacPoints: Array.isArray(floor.hvacPoints) ? floor.hvacPoints : [],
+      blueprintUnderlay: floor.blueprintUnderlay || undefined,
+    };
+  });
+
+  if (!cloned.activeFloorId || !cloned.floors.some((f) => f.id === cloned.activeFloorId)) {
+    cloned.activeFloorId = cloned.floors[0].id;
+  }
+
+  return ProjectSchema.parse(cloned) as Project;
+}
+
+/**
+ * Creates a distinct, independent clone of a project template with new stable UUIDs
+ * across all entities (project, floors, walls, doors, windows, rooms, props, stairs, voids, columns).
+ */
+export function cloneTemplateProject(template: Project, newName?: string): Project {
+  const normalized = normalizeProject(template);
+  const newId = generateId();
+  const now = new Date().toISOString();
+
+  const clonedFloors = normalized.floors.map((floor) => {
+    const newFloorId = generateId();
+    return {
+      ...floor,
+      id: newFloorId,
+      projectId: newId,
+      walls: floor.walls.map((w) => ({
+        ...w,
+        id: generateId(),
+        floorId: newFloorId,
+        doors: (w.doors || []).map((d) => ({ ...d, id: generateId(), floorId: newFloorId })),
+        windows: (w.windows || []).map((win) => ({ ...win, id: generateId(), floorId: newFloorId })),
+      })),
+      rooms: floor.rooms.map((r) => ({ ...r, id: generateId(), floorId: newFloorId })),
+      props: (floor.props || []).map((p) => ({ ...p, id: generateId(), floorId: newFloorId })),
+      stairs: (floor.stairs || []).map((s) => ({ ...s, id: generateId(), floorId: newFloorId })),
+      voids: (floor.voids || []).map((v) => ({ ...v, id: generateId(), floorId: newFloorId })),
+      columns: (floor.columns || []).map((c) => ({ ...c, id: generateId(), floorId: newFloorId })),
+      electricalPoints: (floor.electricalPoints || []).map((e) => ({ ...e, id: generateId(), floorId: newFloorId })),
+      plumbingFixtures: (floor.plumbingFixtures || []).map((pf) => ({ ...pf, id: generateId(), floorId: newFloorId })),
+      hvacPoints: (floor.hvacPoints || []).map((h) => ({ ...h, id: generateId(), floorId: newFloorId })),
+    };
+  });
+
+  const clonedProject: Project = {
+    ...normalized,
+    id: newId,
+    name: newName || `${normalized.name} (Copy)`,
+    metadata: {
+      ...normalized.metadata,
+      createdAt: now,
+      updatedAt: now,
+    },
+    activeFloorId: clonedFloors[0]?.id || "",
+    floors: clonedFloors,
+  };
+
+  return normalizeProject(clonedProject);
+}
 
 /**
  * Creates a fully articulated demo project with realistic rooms, walls, doors, and windows.
@@ -237,11 +408,18 @@ export function getDemoProject(): Project {
             targetArea: 48_000_000, // 48 m²
           },
         ],
+        props: [],
+        stairs: [],
+        voids: [],
+        columns: [],
+        electricalPoints: [],
+        plumbingFixtures: [],
+        hvacPoints: [],
       },
     ],
   };
 
-  return ProjectSchema.parse(demoProject);
+  return normalizeProject(demoProject);
 }
 
 /**
@@ -479,9 +657,16 @@ export function getMyHomeProject(): Project {
             targetArea: 10_000_000,
           },
         ],
+        props: [],
+        stairs: [],
+        voids: [],
+        columns: [],
+        electricalPoints: [],
+        plumbingFixtures: [],
+        hvacPoints: [],
       },
     ],
   };
 
-  return ProjectSchema.parse(myHome);
+  return normalizeProject(myHome);
 }

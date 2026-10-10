@@ -6,9 +6,16 @@ import { useProjectStore } from '@/store/project-store';
 import { GridLayer } from './grid-layer';
 import { WallLayer } from './wall-layer';
 import { RoomLayer } from './room-layer';
+import { PropLayer } from './prop-layer';
+import { StairLayer } from './stair-layer';
+import { VoidLayer } from './void-layer';
+import { ColumnLayer } from './column-layer';
 import { DimensionsLayer } from './dimensions-layer';
+import { MEPLayer } from './mep-layer';
+import { generateDefaultMepLayout } from '@/core/geometry/mep-generator';
 import { screenToMm } from '@/core/canvas/transform';
-import { Point2D, Wall, Door, Window } from '@/core/domain/types';
+import { Point2D, Wall, Door, Window, StructuralColumn } from '@/core/domain/types';
+import { createStairPreset } from '@/core/geometry/stair-utils';
 import { v4 as uuidv4 } from 'uuid';
 import { 
   snapToGrid, 
@@ -19,11 +26,17 @@ import {
   windowPositionValid,
   wallLength
 } from '@/core/geometry/wall-utils';
+import { getReferenceUnderlayFloor, snapToUnderlayEndpoint } from '@/core/geometry/floor-utils';
 import { Vector2D } from '@/core/geometry/vector';
 import { getRoomColor } from '@/core/geometry/room-utils';
+import { FloorPlanConfirmationModal, FloorPlanStatusBar } from './floor-plan-confirmation-modal';
+import { BlueprintUnderlayLayer } from './blueprint-underlay-layer';
+import { BlueprintCalibrationOverlay } from './blueprint-calibration-overlay';
+import { BlueprintDock } from './blueprint-dock';
+import { FileText, Sparkles } from 'lucide-react';
 
 interface SnapFeedback {
-  type: 'endpoint' | 'grid' | 'ortho';
+  type: 'endpoint' | 'grid' | 'ortho' | 'underlay_alignment';
   point: Point2D;
 }
 
@@ -44,6 +57,7 @@ export function CanvasViewport() {
     setZoom, 
     setPanOffset, 
     tool, 
+    setTool,
     selectedElementId, 
     selectedSubElement,
     selectElement,
@@ -53,23 +67,41 @@ export function CanvasViewport() {
     orthoMode: enableOrthoMode,
     gridSize,
     showAllDimensions,
+    showUnderlay,
+    underlayOpacity,
+    showMEPElectrical,
+    showMEPPlumbing,
+    showMEPHVAC,
     doorWidth,
     doorSwing,
     windowWidth,
-    windowSill
+    windowSill,
+    blueprintDockOpen,
+    toggleBlueprintDock,
+    setBlueprintDockOpen,
   } = useCanvasStore();
 
   const { 
     currentProject, 
     addWall, 
     updateWallEndpoints, 
+    commitWallEdit,
     addDoor, 
     addWindow, 
     addRoom, 
     deleteWall,
     deleteDoor,
     deleteWindow,
-    deleteRoom
+    deleteRoom,
+    updateProp,
+    deleteProp,
+    addStaircase,
+    updateStaircase,
+    deleteStaircase,
+    deleteSlabVoid,
+    addColumn,
+    updateColumn,
+    deleteColumn,
   } = useProjectStore();
   
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -93,6 +125,26 @@ export function CanvasViewport() {
   // Snap feedback indicator
   const [snapFeedback, setSnapFeedback] = useState<SnapFeedback | null>(null);
 
+  // Unified Element dragging state (props, stairs, columns)
+  const [draggingEntity, setDraggingEntity] = useState<{
+    type: 'prop' | 'stair' | 'column';
+    id: string;
+    startPointerMm: Point2D;
+    initialPos: Point2D;
+    hasMoved: boolean;
+  } | null>(null);
+
+  // Stage 4.1 Blueprint Scale Calibration state
+  const [calibPoint1, setCalibPoint1] = useState<Point2D | null>(null);
+  const [calibPoint2, setCalibPoint2] = useState<Point2D | null>(null);
+  const [calibCursor, setCalibCursor] = useState<Point2D | null>(null);
+
+  // Stage 3 Floor Plan Confirmation Modal State
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+
+  // Beginner Quick Start Guide State (FIX-01)
+  const [showEmptyGuide, setShowEmptyGuide] = useState(true);
+
   useEffect(() => {
     if (!containerRef.current) return;
     const observer = new ResizeObserver((entries) => {
@@ -104,13 +156,61 @@ export function CanvasViewport() {
     return () => observer.disconnect();
   }, []);
 
-  // Listen for space key for quick pan
+  const finishRoomPolygon = useCallback(() => {
+    if (roomVertices.length >= 3 && currentProject) {
+      const activeFl = currentProject.floors.find(f => f.id === currentProject.activeFloorId);
+      const roomNum = (activeFl?.rooms.length || 0) + 1;
+      const newRoomId = uuidv4();
+      addRoom(currentProject.activeFloorId, {
+        id: newRoomId,
+        floorId: currentProject.activeFloorId,
+        name: `Room ${roomNum}`,
+        polygon: roomVertices,
+        color: getRoomColor('Living'),
+      });
+      selectElement(newRoomId);
+      selectSubElement({ type: 'room', id: newRoomId });
+      setTool('select');
+      setRoomVertices([]);
+      setRoomCursor(null);
+    }
+  }, [roomVertices, currentProject, addRoom, selectElement, selectSubElement, setTool]);
+
+  // Listen for space key for quick pan, delete, escape, and enter
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      
       if (e.code === 'Space' && !e.repeat) {
         setSpacePressed(true);
       }
+
+      if (e.key === 'Escape') {
+        if (tool === 'calibrate') {
+          setCalibPoint1(null);
+          setCalibPoint2(null);
+          setCalibCursor(null);
+          setTool('select');
+          return;
+        }
+        if (roomVertices.length > 0) {
+          setRoomVertices([]);
+          setRoomCursor(null);
+        }
+        setDrawingWall(null);
+        selectElement(null);
+        selectSubElement(null);
+        setTool('select');
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        if (tool === 'room' && roomVertices.length >= 3) {
+          finishRoomPolygon();
+          return;
+        }
+      }
+
       // Delete selected element
       if (e.key === 'Delete' || e.key === 'Backspace') {
         const activeFloor = currentProject?.floors.find(f => f.id === currentProject.activeFloorId);
@@ -129,6 +229,18 @@ export function CanvasViewport() {
           } else if (selectedSubElement.type === 'room') {
             deleteRoom(activeFloor.id, selectedSubElement.id);
             selectElement(null);
+          } else if (selectedSubElement.type === 'prop') {
+            deleteProp(activeFloor.id, selectedSubElement.id);
+            selectSubElement(null);
+          } else if (selectedSubElement.type === 'stair') {
+            deleteStaircase(activeFloor.id, selectedSubElement.id);
+            selectSubElement(null);
+          } else if (selectedSubElement.type === 'column') {
+            deleteColumn(activeFloor.id, selectedSubElement.id);
+            selectSubElement(null);
+          } else if (selectedSubElement.type === 'void') {
+            deleteSlabVoid(activeFloor.id, selectedSubElement.id);
+            selectSubElement(null);
           }
         } else if (selectedElementId) {
           deleteWall(activeFloor.id, selectedElementId);
@@ -149,7 +261,7 @@ export function CanvasViewport() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [currentProject, selectedSubElement, selectedElementId, deleteDoor, deleteWindow, deleteWall, deleteRoom, selectElement, selectSubElement]);
+  }, [currentProject, selectedSubElement, selectedElementId, deleteDoor, deleteWindow, deleteWall, deleteRoom, deleteProp, deleteStaircase, deleteColumn, deleteSlabVoid, selectElement, selectSubElement, setTool, tool, roomVertices, finishRoomPolygon]);
 
   const getPointerMm = useCallback((e: React.MouseEvent | React.PointerEvent) => {
     if (!svgRef.current) return { x: 0, y: 0 };
@@ -160,6 +272,18 @@ export function CanvasViewport() {
   const activeFloor = currentProject?.floors.find((f) => f.id === currentProject.activeFloorId);
   const walls = useMemo(() => activeFloor?.walls || [], [activeFloor?.walls]);
   const rooms = useMemo(() => activeFloor?.rooms || [], [activeFloor?.rooms]);
+  const isEmptyFloor = Boolean(
+    activeFloor &&
+    walls.length === 0 &&
+    rooms.length === 0 &&
+    !activeFloor.blueprintUnderlay
+  );
+
+  // Multi-floor underlay/ghosting: Floor immediately below current floor
+  const underlayFloor = useMemo(() => {
+    if (!currentProject || !showUnderlay) return null;
+    return getReferenceUnderlayFloor(currentProject, currentProject.activeFloorId);
+  }, [currentProject, showUnderlay]);
 
   // Apply snapping pipeline to raw mm point
   const applySnapping = useCallback((rawPt: Point2D, referenceStart?: Point2D, isShiftPressed: boolean = false): { point: Point2D; feedback: SnapFeedback | null } => {
@@ -178,6 +302,14 @@ export function CanvasViewport() {
       if (snapEndpoint) {
         return { point: snapEndpoint, feedback: { type: 'endpoint', point: snapEndpoint } };
       }
+
+      // Inter-floor underlay alignment snap
+      if (showUnderlay && underlayFloor) {
+        const snapUnderlay = snapToUnderlayEndpoint(pt, underlayFloor, Math.max(25 / zoom, 80));
+        if (snapUnderlay) {
+          return { point: snapUnderlay, feedback: { type: 'underlay_alignment', point: snapUnderlay } };
+        }
+      }
     }
 
     // 3. Grid snap
@@ -190,7 +322,70 @@ export function CanvasViewport() {
     }
 
     return { point: pt, feedback };
-  }, [enableOrthoMode, enableSnapEndpoints, enableSnapGrid, gridSize, walls, zoom]);
+  }, [enableOrthoMode, enableSnapEndpoints, enableSnapGrid, gridSize, walls, zoom, showUnderlay, underlayFloor]);
+
+  const handlePropPointerDown = (propId: string, e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+
+    const activeFl = currentProject?.floors.find(f => f.id === currentProject.activeFloorId);
+    const prop = activeFl?.props?.find(p => p.id === propId);
+    if (!prop) return;
+
+    selectSubElement({ type: 'prop', id: propId });
+    selectElement(null);
+
+    const pointerMm = getPointerMm(e);
+    setDraggingEntity({
+      type: 'prop',
+      id: propId,
+      startPointerMm: pointerMm,
+      initialPos: { ...prop.position },
+      hasMoved: false,
+    });
+  };
+
+  const handleStairPointerDown = (e: React.PointerEvent, stairId: string) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+
+    const activeFl = currentProject?.floors.find(f => f.id === currentProject.activeFloorId);
+    const stair = activeFl?.stairs?.find(s => s.id === stairId);
+    if (!stair) return;
+
+    selectSubElement({ type: 'stair', id: stairId });
+    selectElement(null);
+
+    const pointerMm = getPointerMm(e);
+    setDraggingEntity({
+      type: 'stair',
+      id: stairId,
+      startPointerMm: pointerMm,
+      initialPos: { ...stair.position },
+      hasMoved: false,
+    });
+  };
+
+  const handleColumnPointerDown = (e: React.PointerEvent, colId: string) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+
+    const activeFl = currentProject?.floors.find(f => f.id === currentProject.activeFloorId);
+    const col = activeFl?.columns?.find(c => c.id === colId);
+    if (!col) return;
+
+    selectSubElement({ type: 'column', id: colId });
+    selectElement(null);
+
+    const pointerMm = getPointerMm(e);
+    setDraggingEntity({
+      type: 'column',
+      id: colId,
+      startPointerMm: pointerMm,
+      initialPos: { ...col.position },
+      hasMoved: false,
+    });
+  };
 
   const handlePointerDown = (e: React.PointerEvent) => {
     // Middle click, space key, alt key, or pan tool
@@ -207,10 +402,48 @@ export function CanvasViewport() {
       return;
     }
 
+    if (tool === 'calibrate') {
+      const rawPt = getPointerMm(e);
+      if (!calibPoint1) {
+        setCalibPoint1(rawPt);
+      } else if (!calibPoint2) {
+        setCalibPoint2(rawPt);
+      }
+      return;
+    }
+
     if (tool === 'wall') {
       const rawPt = getPointerMm(e);
       const { point: pt } = applySnapping(rawPt, undefined, e.shiftKey);
       setDrawingWall({ start: pt, current: pt });
+    }
+
+    if (tool === 'stair' && currentProject) {
+      const rawPt = getPointerMm(e);
+      const { point: pt } = applySnapping(rawPt, undefined, e.shiftKey);
+      const newStair = createStairPreset('dog_leg', currentProject.activeFloorId, { x: Math.round(pt.x), y: Math.round(pt.y) });
+      addStaircase(currentProject.activeFloorId, newStair);
+      selectSubElement({ type: 'stair', id: newStair.id });
+      setTool('select');
+      return;
+    }
+
+    if (tool === 'column' && currentProject) {
+      const rawPt = getPointerMm(e);
+      const { point: pt } = applySnapping(rawPt, undefined, e.shiftKey);
+      const newColId = uuidv4();
+      const newCol: StructuralColumn = {
+        id: newColId,
+        floorId: currentProject.activeFloorId,
+        position: { x: Math.round(pt.x), y: Math.round(pt.y) },
+        width: 230,
+        depth: 450,
+        rotation: 0,
+      };
+      addColumn(currentProject.activeFloorId, newCol);
+      selectSubElement({ type: 'column', id: newColId });
+      setTool('select');
+      return;
     }
 
     if ((tool === 'door' || tool === 'window') && ghostPlacement && ghostPlacement.valid && currentProject) {
@@ -252,27 +485,21 @@ export function CanvasViewport() {
       if (roomVertices.length >= 3) {
         const first = roomVertices[0];
         const dist = new Vector2D(pt.x, pt.y).distanceTo(first);
-        if (dist <= Math.max(30 / zoom, 150)) {
+        if (dist <= Math.max(30 / zoom, 250)) {
           // Close room!
-          if (currentProject) {
-            const newRoomId = uuidv4();
-            addRoom(currentProject.activeFloorId, {
-              id: newRoomId,
-              floorId: currentProject.activeFloorId,
-              name: `Room ${rooms.length + 1}`,
-              polygon: roomVertices,
-              color: getRoomColor('Living'),
-            });
-            selectElement(newRoomId);
-          }
-          setRoomVertices([]);
-          setRoomCursor(null);
+          finishRoomPolygon();
           return;
         }
       }
 
       setRoomVertices(prev => [...prev, pt]);
       setRoomCursor(pt);
+    }
+  };
+
+  const handleDoubleClick = () => {
+    if (tool === 'room' && roomVertices.length >= 3) {
+      finishRoomPolygon();
     }
   };
 
@@ -286,6 +513,48 @@ export function CanvasViewport() {
     }
 
     const rawPt = getPointerMm(e);
+
+    if (tool === 'calibrate') {
+      setCalibCursor(rawPt);
+      return;
+    }
+
+    // Entity dragging (props, stairs, columns)
+    if (draggingEntity && currentProject) {
+      const activeFl = currentProject.floors.find(f => f.id === currentProject.activeFloorId);
+      if (activeFl) {
+        const dx = rawPt.x - draggingEntity.startPointerMm.x;
+        const dy = rawPt.y - draggingEntity.startPointerMm.y;
+
+        let targetX = draggingEntity.initialPos.x + dx;
+        let targetY = draggingEntity.initialPos.y + dy;
+
+        // Snapping to grid if enabled
+        if (enableSnapGrid) {
+          targetX = Math.round(targetX / gridSize) * gridSize;
+          targetY = Math.round(targetY / gridSize) * gridSize;
+        }
+
+        if (draggingEntity.type === 'prop') {
+          updateProp(activeFl.id, draggingEntity.id, (p) => {
+            p.position = { x: Math.round(targetX), y: Math.round(targetY) };
+          });
+        } else if (draggingEntity.type === 'stair') {
+          updateStaircase(activeFl.id, draggingEntity.id, (s) => {
+            s.position = { x: Math.round(targetX), y: Math.round(targetY) };
+          });
+        } else if (draggingEntity.type === 'column') {
+          updateColumn(activeFl.id, draggingEntity.id, (c) => {
+            c.position = { x: Math.round(targetX), y: Math.round(targetY) };
+          });
+        }
+
+        if (!draggingEntity.hasMoved) {
+          setDraggingEntity(prev => prev ? { ...prev, hasMoved: true } : null);
+        }
+      }
+      return;
+    }
 
     // Wall drawing preview
     if (tool === 'wall' && drawingWall) {
@@ -357,7 +626,15 @@ export function CanvasViewport() {
       return;
     }
 
+    if (draggingEntity) {
+      setDraggingEntity(null);
+      return;
+    }
+
     if (draggingEndpoint) {
+      if (currentProject) {
+        commitWallEdit(currentProject.activeFloorId, draggingEndpoint.wallId);
+      }
       setDraggingEndpoint(null);
       return;
     }
@@ -411,6 +688,34 @@ export function CanvasViewport() {
 
   return (
     <div ref={containerRef} className="w-full h-full bg-slate-50 overflow-hidden relative select-none">
+      {/* Floating Helper Banner for Room Tool */}
+      {tool === 'room' && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-slate-900/90 text-white px-3.5 py-1.5 rounded-full shadow-lg text-xs flex items-center gap-2.5 z-20 backdrop-blur pointer-events-auto select-none border border-slate-700/60">
+          <div className="h-2 w-2 rounded-full bg-sky-400 animate-pulse" />
+          <span className="font-medium text-slate-100">
+            {roomVertices.length === 0 
+              ? "Click anywhere to place first room corner" 
+              : roomVertices.length < 3
+              ? `Placed ${roomVertices.length} point(s) • Click to add corners`
+              : `Placed ${roomVertices.length} points • Double-click or click start point to close`}
+          </span>
+          {roomVertices.length >= 3 && (
+            <button
+              onClick={finishRoomPolygon}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-semibold px-2 py-0.5 rounded transition-colors cursor-pointer"
+            >
+              Finish Room
+            </button>
+          )}
+          <button
+            onClick={() => { setRoomVertices([]); setRoomCursor(null); setTool('select'); }}
+            className="text-slate-400 hover:text-white text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer"
+          >
+            Cancel (Esc)
+          </button>
+        </div>
+      )}
+
       <svg
         ref={svgRef}
         width={size.w}
@@ -418,6 +723,15 @@ export function CanvasViewport() {
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onDoubleClick={handleDoubleClick}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          if (roomVertices.length > 0) {
+            setRoomVertices([]);
+            setRoomCursor(null);
+            setTool('select');
+          }
+        }}
         onWheel={handleWheel}
         className={
           tool === 'pan' || isPanning || spacePressed
@@ -429,6 +743,9 @@ export function CanvasViewport() {
             : 'cursor-default'
         }
       >
+        {/* Full-bleed background click catcher for instant blank-space deselection */}
+        <rect width={size.w} height={size.h} fill="transparent" pointerEvents="all" />
+
         <g transform={`translate(${panOffset.x}, ${panOffset.y}) scale(${zoom})`}>
           {/* Architectural Grid Layer */}
           <GridLayer 
@@ -439,17 +756,159 @@ export function CanvasViewport() {
             gridSize={gridSize} 
           />
 
+          {/* Stage 4.1: Blueprint Reference Underlay Layer */}
+          <BlueprintUnderlayLayer underlay={activeFloor?.blueprintUnderlay} zoom={zoom} />
+
+          {/* Multi-Floor Underlay / Ghosting Layer (Shows floor below faintly for alignment) */}
+          {underlayFloor && (
+            <g id="underlay-ghost-layer" opacity={underlayOpacity ?? 0.35} pointerEvents="none">
+              {underlayFloor.walls.map((uw) => (
+                <g key={`ghost-wall-grp-${uw.id}`}>
+                  <line
+                    x1={uw.start.x}
+                    y1={uw.start.y}
+                    x2={uw.end.x}
+                    y2={uw.end.y}
+                    stroke="#64748b"
+                    strokeWidth={uw.thickness}
+                    strokeDasharray={`${8 / zoom},${6 / zoom}`}
+                    strokeLinecap="butt"
+                  />
+                  {/* High-visibility architectural centerline */}
+                  <line
+                    x1={uw.start.x}
+                    y1={uw.start.y}
+                    x2={uw.end.x}
+                    y2={uw.end.y}
+                    stroke="#0284c7"
+                    strokeWidth={1.5 / zoom}
+                    strokeDasharray={`${4 / zoom},${4 / zoom}`}
+                  />
+                </g>
+              ))}
+              {underlayFloor.columns?.map((uc) => (
+                <rect
+                  key={`ghost-col-${uc.id}`}
+                  x={uc.position.x - uc.width / 2}
+                  y={uc.position.y - uc.depth / 2}
+                  width={uc.width}
+                  height={uc.depth}
+                  fill="#94a3b8"
+                  stroke="#0284c7"
+                  strokeWidth={1.5 / zoom}
+                  strokeDasharray={`${3 / zoom},${3 / zoom}`}
+                />
+              ))}
+            </g>
+          )}
+
           {/* Rooms Layer */}
           <RoomLayer 
             rooms={rooms} 
             zoom={zoom} 
             selectedElementId={selectedElementId} 
             onSelect={(id) => {
-              selectElement(id);
-              selectSubElement({ type: 'room', id });
+              if (!id) {
+                selectElement(null);
+                selectSubElement(null);
+              } else {
+                selectElement(id);
+                selectSubElement({ type: 'room', id });
+              }
             }} 
             preferredUnit={currentProject?.settings.preferredUnit || 'mm'} 
           />
+
+          {/* Slab Voids Layer (Double-Height living cutouts, stairwells) */}
+          <VoidLayer
+            voids={activeFloor?.voids || []}
+            zoom={zoom}
+            selectedSubElement={selectedSubElement}
+            onSelectVoid={(voidId) => {
+              selectSubElement({ type: 'void', id: voidId });
+            }}
+          />
+
+          {/* Vertical Circulation: Staircases Layer */}
+          <StairLayer
+            stairs={activeFloor?.stairs || []}
+            zoom={zoom}
+            selectedSubElement={selectedSubElement}
+            onSelectStair={(stairId) => {
+              selectSubElement({ type: 'stair', id: stairId });
+            }}
+            onStairPointerDown={handleStairPointerDown}
+          />
+
+          {/* Props & Furniture Accessories Layer */}
+          <PropLayer
+            props={activeFloor?.props || []}
+            zoom={zoom}
+            selectedSubElement={selectedSubElement}
+            onSelectProp={(propId) => {
+              selectSubElement({ type: 'prop', id: propId });
+            }}
+            onPropPointerDown={handlePropPointerDown}
+            onDeleteProp={(propId) => {
+              if (activeFloor) {
+                deleteProp(activeFloor.id, propId);
+                selectSubElement(null);
+              }
+            }}
+            onRotateProp={(propId) => {
+              if (activeFloor) {
+                updateProp(activeFloor.id, propId, (p) => {
+                  p.rotation = ((p.rotation || 0) + 90) % 360;
+                });
+              }
+            }}
+            isDraggingProp={draggingEntity?.type === 'prop'}
+            draggingPropId={draggingEntity?.type === 'prop' ? draggingEntity.id : undefined}
+          />
+
+          {/* Walls Layer with Doors and Windows */}
+          <WallLayer 
+            walls={walls} 
+            zoom={zoom} 
+            selectedElementId={selectedElementId} 
+            selectedSubElement={selectedSubElement}
+            onSelect={(id) => {
+              selectElement(id);
+              selectSubElement({ type: 'wall', id });
+            }}
+            onSelectSubElement={(sel) => {
+              selectSubElement(sel);
+            }}
+            onEndpointPointerDown={handleEndpointPointerDown}
+          />
+
+          {/* Structural RC Columns Grid Layer */}
+          <ColumnLayer
+            columns={activeFloor?.columns || []}
+            zoom={zoom}
+            selectedSubElement={selectedSubElement}
+            onSelectColumn={(colId) => {
+              selectSubElement({ type: 'column', id: colId });
+            }}
+            onColumnPointerDown={handleColumnPointerDown}
+          />
+
+          {/* MEP Architectural Schematics Layer */}
+          {(showMEPElectrical || showMEPPlumbing || showMEPHVAC) && activeFloor && (
+            <MEPLayer
+              floor={
+                (activeFloor.electricalPoints && activeFloor.electricalPoints.length > 0)
+                  ? activeFloor
+                  : {
+                      ...activeFloor,
+                      ...generateDefaultMepLayout(activeFloor)
+                    }
+              }
+              showElectrical={showMEPElectrical}
+              showPlumbing={showMEPPlumbing}
+              showHVAC={showMEPHVAC}
+            />
+          )}
 
           {/* Room Polygon In-Progress Drawing */}
           {tool === 'room' && roomVertices.length > 0 && (
@@ -475,22 +934,6 @@ export function CanvasViewport() {
               ))}
             </g>
           )}
-
-          {/* Walls Layer with Doors and Windows */}
-          <WallLayer 
-            walls={walls} 
-            zoom={zoom} 
-            selectedElementId={selectedElementId} 
-            selectedSubElement={selectedSubElement}
-            onSelect={(id) => {
-              selectElement(id);
-              selectSubElement({ type: 'wall', id });
-            }}
-            onSelectSubElement={(sel) => {
-              selectSubElement(sel);
-            }}
-            onEndpointPointerDown={handleEndpointPointerDown}
-          />
           
           {/* Wall Drawing Live Preview */}
           {tool === 'wall' && drawingWall && (
@@ -575,6 +1018,14 @@ export function CanvasViewport() {
                   <line x1={0} y1={-6 / zoom} x2={0} y2={6 / zoom} stroke="#38bdf8" strokeWidth={1.5 / zoom} />
                 </g>
               )}
+              {snapFeedback.type === 'underlay_alignment' && (
+                <g transform={`translate(${snapFeedback.point.x}, ${snapFeedback.point.y})`}>
+                  <circle r={12 / zoom} fill="none" stroke="#0284c7" strokeWidth={2 / zoom} strokeDasharray={`${3 / zoom},${2 / zoom}`} />
+                  <circle r={4 / zoom} fill="#0284c7" />
+                  <line x1={-16 / zoom} y1={0} x2={16 / zoom} y2={0} stroke="#0284c7" strokeWidth={1 / zoom} />
+                  <line x1={0} y1={-16 / zoom} x2={0} y2={16 / zoom} stroke="#0284c7" strokeWidth={1 / zoom} />
+                </g>
+              )}
             </g>
           )}
 
@@ -586,6 +1037,34 @@ export function CanvasViewport() {
             preferredUnit={currentProject?.settings.preferredUnit || 'mm'} 
             showAll={showAllDimensions}
           />
+
+          {/* Stage 4.1: Interactive Scale Calibration Overlay */}
+          {tool === 'calibrate' && activeFloor?.blueprintUnderlay && (
+            <BlueprintCalibrationOverlay
+              activeFloorId={activeFloor.id}
+              underlay={activeFloor.blueprintUnderlay}
+              zoom={zoom}
+              point1Mm={calibPoint1}
+              point2Mm={calibPoint2}
+              cursorMm={calibCursor}
+              onResetPoints={() => {
+                setCalibPoint1(null);
+                setCalibPoint2(null);
+              }}
+              onCancel={() => {
+                setCalibPoint1(null);
+                setCalibPoint2(null);
+                setCalibCursor(null);
+                setTool('select');
+              }}
+              onComplete={() => {
+                setCalibPoint1(null);
+                setCalibPoint2(null);
+                setCalibCursor(null);
+                setTool('select');
+              }}
+            />
+          )}
         </g>
       </svg>
 
@@ -600,7 +1079,110 @@ export function CanvasViewport() {
         <span>Snap: <strong>{enableSnapEndpoints ? 'ON' : 'OFF'}</strong></span>
         <span>•</span>
         <span>Ortho: <strong>{enableOrthoMode ? 'ON' : 'Shift'}</strong></span>
+        <span>•</span>
+        <button
+          onClick={toggleBlueprintDock}
+          className={`pointer-events-auto px-2 py-0.5 rounded text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer border ${
+            activeFloor?.blueprintUnderlay
+              ? 'bg-cyan-50 border-cyan-300 text-cyan-800 hover:bg-cyan-100'
+              : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+          }`}
+          title="Import and Calibrate Blueprint Floor Plan"
+        >
+          <FileText className="h-3 w-3 text-cyan-600" />
+          <span>Blueprint</span>
+          {activeFloor?.blueprintUnderlay && (
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-500" />
+          )}
+        </button>
       </div>
+
+      {/* Stage 3 Floor Plan Review & Baseline Confirmation Bar */}
+      <FloorPlanStatusBar onOpenModal={() => setIsReviewModalOpen(true)} />
+
+      {/* Stage 3 Floor Plan Review & Confirmation Modal */}
+      <FloorPlanConfirmationModal 
+        isOpen={isReviewModalOpen} 
+        onClose={() => setIsReviewModalOpen(false)} 
+      />
+
+      {/* Stage 4.1: Blueprint Reference Underlay Dock */}
+      <BlueprintDock
+        isOpen={blueprintDockOpen}
+        onClose={() => setBlueprintDockOpen(false)}
+      />
+
+      {/* Beginner Empty Canvas Onboarding Guide (FIX-01) */}
+      {isEmptyFloor && showEmptyGuide && (
+        <div
+          data-testid="empty-canvas-onboarding-guide"
+          className="absolute top-12 left-1/2 -translate-x-1/2 z-20 max-w-md w-[90%] bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-2xl text-center space-y-3.5 animate-in fade-in zoom-in-95 duration-200"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-bold text-xs uppercase tracking-wider">
+              <Sparkles className="h-3.5 w-3.5" />
+              <span>Quick Start</span>
+            </div>
+            <button
+              onClick={() => setShowEmptyGuide(false)}
+              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs p-1 rounded-md transition-colors cursor-pointer"
+              aria-label="Dismiss quick start guide"
+              title="Dismiss guide"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="text-left space-y-1">
+            <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">
+              Begin designing your floor plan
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+              Choose an action below to start drafting or bring in an existing architectural plan:
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 text-left">
+            <button
+              onClick={() => {
+                setTool('wall');
+                setShowEmptyGuide(false);
+              }}
+              className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 transition-all text-xs group cursor-pointer"
+              data-testid="onboarding-draw-wall-btn"
+            >
+              <span className="font-bold text-slate-900 dark:text-slate-100 block group-hover:text-indigo-600">
+                Draw Walls
+              </span>
+              <p className="text-[10px] text-slate-500 mt-0.5">Press W to draft lines</p>
+            </button>
+            <button
+              onClick={() => {
+                setTool('room');
+                setShowEmptyGuide(false);
+              }}
+              className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 transition-all text-xs group cursor-pointer"
+              data-testid="onboarding-draw-room-btn"
+            >
+              <span className="font-bold text-slate-900 dark:text-slate-100 block group-hover:text-indigo-600">
+                Add Room
+              </span>
+              <p className="text-[10px] text-slate-500 mt-0.5">Press R to draw polygon</p>
+            </button>
+            <button
+              onClick={() => {
+                toggleBlueprintDock();
+                setShowEmptyGuide(false);
+              }}
+              className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-cyan-400 hover:bg-cyan-50/50 dark:hover:bg-cyan-950/30 transition-all text-xs group cursor-pointer"
+              data-testid="onboarding-import-blueprint-btn"
+            >
+              <span className="font-bold text-slate-900 dark:text-slate-100 block group-hover:text-cyan-600">
+                Import Plan
+              </span>
+              <p className="text-[10px] text-slate-500 mt-0.5">PNG, JPG or PDF</p>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
