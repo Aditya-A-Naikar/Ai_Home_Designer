@@ -305,6 +305,32 @@ export const FloorSchema = z.object({
   electricalPoints: z.array(ElectricalPointSchema).optional(),
   plumbingFixtures: z.array(PlumbingFixtureSchema).optional(),
   hvacPoints: z.array(HVACPointSchema).optional(),
+  blueprintUnderlay: z.lazy(() => BlueprintUnderlaySchema).optional(),
+});
+
+export const BlueprintCalibrationSchema = z.object({
+  point1Px: Point2DSchema,
+  point2Px: Point2DSchema,
+  pixelDistance: z.number().positive(),
+  realDistanceMm: z.number().positive(),
+  calibratedAt: z.string(),
+});
+
+export const BlueprintUnderlaySchema = z.object({
+  id: z.string(),
+  floorId: z.string(),
+  fileName: z.string(),
+  fileType: z.string(),
+  fileSizeBytes: z.number().nonnegative(),
+  imageUrl: z.string(),
+  imageWidth: z.number().positive(),
+  imageHeight: z.number().positive(),
+  positionMm: Point2DSchema,
+  mmPerPixel: z.number().positive(),
+  rotationDeg: z.number().default(0),
+  opacity: z.number().min(0).max(1).default(0.5),
+  visible: z.boolean().default(true),
+  calibration: BlueprintCalibrationSchema.optional(),
 });
 
 export const DuplexConfigSchema = z.object({

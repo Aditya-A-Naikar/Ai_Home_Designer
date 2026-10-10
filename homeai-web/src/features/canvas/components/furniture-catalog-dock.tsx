@@ -15,7 +15,7 @@ import {
 
 export function FurnitureCatalogDock() {
   const { currentProject, addProp } = useProjectStore();
-  const { catalogDockOpen, setCatalogDockOpen, selectSubElement } = useCanvasStore();
+  const { activeDrawer, closeDrawer, selectSubElement, viewMode, activePlacementPreset, setActivePlacementPreset } = useCanvasStore();
 
   const [activeCategory, setActiveCategory] = useState<PropCategory | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -36,12 +36,21 @@ export function FurnitureCatalogDock() {
     });
   }, [activeCategory, searchQuery]);
 
-  if (!catalogDockOpen) return null;
+  if (activeDrawer !== 'catalog') return null;
 
   const handlePlaceProp = (presetKey: string) => {
     if (!activeFloor) return;
     const preset = PROP_PRESETS[presetKey];
     if (!preset) return;
+
+    if (viewMode === '3d') {
+      if (activePlacementPreset === presetKey) {
+        setActivePlacementPreset(null);
+      } else {
+        setActivePlacementPreset(presetKey);
+      }
+      return;
+    }
 
     let placeX = 3000;
     let placeY = 3000;
@@ -86,19 +95,21 @@ export function FurnitureCatalogDock() {
   ];
 
   return (
-    <div className="w-80 bg-[#0a0f1d] border-r border-slate-800/80 flex flex-col h-full shrink-0 select-none z-20 font-mono shadow-xl">
+    <div className="w-80 bg-white border-r border-slate-200 flex flex-col h-full shrink-0 select-none z-20 shadow-sm">
       {/* Header */}
-      <div className="h-14 border-b border-slate-800/80 px-4 flex items-center justify-between bg-slate-950/60 shrink-0">
+      <div className="h-12 border-b border-slate-200 px-4 flex items-center justify-between bg-slate-50 shrink-0">
         <div className="flex items-center gap-2">
-          <Armchair className="h-4 w-4 text-cyan-400" />
-          <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+          <div className="h-6 w-6 rounded-md bg-indigo-600/10 text-indigo-600 flex items-center justify-center">
+            <Armchair className="h-3.5 w-3.5" />
+          </div>
+          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
             Furniture & Decor
           </h3>
         </div>
         <button
           type="button"
-          onClick={() => setCatalogDockOpen(false)}
-          className="text-slate-400 hover:text-white p-1 rounded-md hover:bg-slate-900 transition-colors cursor-pointer"
+          onClick={() => closeDrawer()}
+          className="text-slate-400 hover:text-slate-700 p-1 rounded-md hover:bg-slate-200/70 transition-colors cursor-pointer"
           title="Close Catalog"
         >
           <X className="h-4 w-4" />
@@ -106,16 +117,16 @@ export function FurnitureCatalogDock() {
       </div>
 
       {/* Category Pills */}
-      <div className="px-3 py-2 border-b border-slate-800/80 bg-slate-950/30 flex items-center gap-1.5 overflow-x-auto scrollbar-none shrink-0">
+      <div className="px-3 py-2 border-b border-slate-100 bg-slate-50/50 flex items-center gap-1.5 overflow-x-auto scrollbar-none shrink-0">
         {categories.map((cat) => (
           <button
             key={cat.id}
             type="button"
             onClick={() => setActiveCategory(cat.id)}
-            className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-colors cursor-pointer shrink-0 ${
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors cursor-pointer shrink-0 ${
               activeCategory === cat.id
-                ? "bg-cyan-500 text-slate-950 shadow-xs"
-                : "bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700"
+                ? "bg-indigo-600 text-white shadow-xs font-semibold"
+                : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:border-slate-300"
             }`}
           >
             {cat.label}
@@ -124,73 +135,82 @@ export function FurnitureCatalogDock() {
       </div>
 
       {/* Search Input Bar */}
-      <div className="p-3 border-b border-slate-800/80 bg-slate-950/20 shrink-0">
+      <div className="p-3 border-b border-slate-100 bg-white shrink-0">
         <div className="relative">
-          <Search className="h-3.5 w-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search className="h-3.5 w-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search furniture, fans, beds..."
-            className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-hidden focus:border-cyan-500 font-sans"
+            className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-indigo-500 focus:bg-white transition-colors"
           />
         </div>
       </div>
 
       {/* Drag & Drop Hint Banner */}
-      <div className="px-3 py-1.5 bg-cyan-950/30 border-b border-cyan-900/30 text-[10px] text-cyan-300 flex items-center justify-between shrink-0">
-        <span>💡 Drag cards directly onto 3D scene</span>
-        <span className="text-cyan-400 font-bold">SNAP ACTIVE</span>
+      <div className="px-3 py-1.5 bg-indigo-50/70 border-b border-indigo-100 text-[11px] text-indigo-700 flex items-center justify-between shrink-0 font-medium">
+        <span>💡 Click to place or drag onto canvas</span>
+        <span className="text-indigo-600 font-semibold text-[10px] uppercase">Snap Active</span>
       </div>
 
       {/* Item Cards Grid */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
         <div className="grid grid-cols-2 gap-2">
-          {filteredItems.map(([key, preset]) => (
-            <div
-              key={key}
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData(
-                  "application/json",
-                  JSON.stringify({
-                    type: "furniture-catalog-item",
-                    presetKey: key,
-                  })
-                );
-              }}
-              onClick={() => handlePlaceProp(key)}
-              className="border border-slate-800/90 hover:border-cyan-500 rounded-xl p-2.5 bg-slate-900/80 hover:bg-cyan-950/30 transition-all flex flex-col justify-between group cursor-grab active:cursor-grabbing shadow-xs"
-              title={`Drag into 3D floor plan or click to place in room`}
-            >
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <span
-                    className="w-2.5 h-2.5 rounded-full border border-slate-600 shrink-0"
-                    style={{ backgroundColor: preset.defaultColor }}
-                  />
-                  <span className="text-[9px] text-slate-500 uppercase tracking-wider">
-                    {preset.category}
-                  </span>
-                </div>
-                <h5 className="text-[11px] font-bold text-white group-hover:text-cyan-300 transition-colors line-clamp-1 font-sans">
-                  {preset.name}
-                </h5>
-                <p className="text-[9px] text-slate-400 mt-0.5">
-                  {preset.dimensions.width} × {preset.dimensions.depth} mm
-                </p>
-              </div>
+          {filteredItems.map(([key, preset]) => {
+            const is3DActive = viewMode === '3d' && activePlacementPreset === key;
+            return (
+              <div
+                key={key}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData(
+                      "application/json",
+                      JSON.stringify({
+                        type: "furniture-catalog-item",
+                        presetKey: key,
+                      })
+                    );
+                  }}
+                  onClick={() => handlePlaceProp(key)}
+                  className={`border rounded-xl p-2.5 transition-all flex flex-col justify-between group cursor-grab active:cursor-grabbing shadow-xs hover:shadow-sm ${
+                    is3DActive
+                      ? "border-indigo-500 bg-indigo-50/80 ring-2 ring-indigo-500/30"
+                      : "border-slate-200 hover:border-indigo-400 bg-slate-50/60 hover:bg-white"
+                  }`}
+                  title={viewMode === '3d' ? "Click to place in 3D (with magnetic wall alignment)" : "Drag into floor plan or click to place"}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full border border-slate-300 shrink-0"
+                        style={{ backgroundColor: preset.defaultColor }}
+                      />
+                      <span className="text-[9px] text-slate-400 uppercase tracking-wider font-medium">
+                        {preset.category}
+                      </span>
+                    </div>
+                    <h5 className="text-xs font-semibold text-slate-800 group-hover:text-indigo-600 transition-colors line-clamp-1">
+                      {preset.name}
+                    </h5>
+                    <p className="text-[10px] text-slate-500 mt-0.5 font-mono">
+                      {preset.dimensions.width} × {preset.dimensions.depth} mm
+                    </p>
+                  </div>
 
-              <div className="mt-2.5 pt-1.5 border-t border-slate-800 flex items-center justify-between text-[10px] text-slate-400 group-hover:text-cyan-300">
-                <span>Place</span>
-                <Plus className="h-3 w-3" />
-              </div>
-            </div>
-          ))}
+                  <div className={`mt-2.5 pt-1.5 border-t border-slate-200/80 flex items-center justify-between text-[11px] font-medium ${
+                    is3DActive ? "text-indigo-700 font-bold" : "text-slate-500 group-hover:text-indigo-600"
+                  }`}>
+                    <span>{is3DActive ? "Placing in 3D..." : viewMode === '3d' ? "Place in 3D" : "Place"}</span>
+                    <Plus className="h-3 w-3" />
+                  </div>
+                </div>
+              );
+            })}
         </div>
 
         {filteredItems.length === 0 && (
-          <div className="text-center py-8 text-xs text-slate-500">
+          <div className="text-center py-8 text-xs text-slate-400">
             No furniture matching &quot;{searchQuery}&quot;
           </div>
         )}

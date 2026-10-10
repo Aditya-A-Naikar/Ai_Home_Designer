@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { useProjectStore } from "@/store/project-store";
 import { useCanvasStore } from "@/store/canvas-store";
-import { WALL_FINISHES, FloorFinishType, WallFinishType } from "@/core/geometry/pbr-materials";
+import { FLOOR_FINISHES, WALL_FINISHES, FloorFinishType, WallFinishType } from "@/core/geometry/pbr-materials";
 import { 
   Palette, 
   Check, 
@@ -21,15 +21,15 @@ export function MaterialsColorsDock() {
   } = useProjectStore();
 
   const { 
-    materialsDockOpen, 
-    setMaterialsDockOpen, 
+    activeDrawer, 
+    closeDrawer, 
     selectedSubElement 
   } = useCanvasStore();
 
   const [activeTab, setActiveTab] = useState<MaterialTab>("walls");
   const [notification, setNotification] = useState<string | null>(null);
 
-  if (!materialsDockOpen || !currentProject) return null;
+  if (activeDrawer !== 'materials' || !currentProject) return null;
 
   const activeFloor = currentProject.floors.find(
     (f) => f.id === currentProject.activeFloorId
@@ -68,14 +68,6 @@ export function MaterialsColorsDock() {
     { label: "Anthracite", hex: "#0f172a", finish: "charcoal_slate" as WallFinishType },
   ];
 
-  const flooringOptions: { key: FloorFinishType; name: string; desc: string; previewColor: string }[] = [
-    { key: "italian_marble", name: "Calacatta Gold Marble", desc: "Bookmatched white Italian marble with warm gold veining", previewColor: "#f8fafc" },
-    { key: "teak_hardwood", name: "Golden Teak Hardwood", desc: "Micro-beveled wide plank timber with natural satin sheen", previewColor: "#b45309" },
-    { key: "polished_concrete", name: "Honed Architectural Concrete", desc: "Monolithic micro-topping screed for contemporary spaces", previewColor: "#64748b" },
-    { key: "terrazzo", name: "Venetian Cast Terrazzo", desc: "River-pebble aggregate terrazzo for Mediterranean light", previewColor: "#cbd5e1" },
-    { key: "slate_ceramic_tile", name: "Slate Ceramic Tile", desc: "Deep charcoal stone-look tile with subtle crystalline grain", previewColor: "#1e293b" },
-  ];
-
   const sofaFabrics = [
     { name: "Emerald Velvet", color: "#166534", desc: "Italian high-density crushed velvet" },
     { name: "Cognac Leather", color: "#9a3412", desc: "Full-grain aniline saddle leather" },
@@ -93,19 +85,21 @@ export function MaterialsColorsDock() {
   ];
 
   return (
-    <div className="w-84 bg-[#0a0f1d] border-l border-slate-800/80 flex flex-col h-full shrink-0 select-none z-20 font-mono shadow-2xl">
+    <div className="w-80 bg-white border-l border-slate-200 flex flex-col h-full shrink-0 select-none z-20 shadow-sm">
       {/* Header */}
-      <div className="h-14 border-b border-slate-800/80 px-4 flex items-center justify-between bg-slate-950/60 shrink-0">
+      <div className="h-12 border-b border-slate-200 px-4 flex items-center justify-between bg-slate-50 shrink-0">
         <div className="flex items-center gap-2">
-          <Palette className="h-4 w-4 text-cyan-400" />
-          <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+          <div className="h-6 w-6 rounded-md bg-indigo-600/10 text-indigo-600 flex items-center justify-center">
+            <Palette className="h-3.5 w-3.5" />
+          </div>
+          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
             Materials & Finishes
           </h3>
         </div>
         <button
           type="button"
-          onClick={() => setMaterialsDockOpen(false)}
-          className="text-slate-400 hover:text-white p-1 rounded-md hover:bg-slate-900 transition-colors cursor-pointer"
+          onClick={() => closeDrawer()}
+          className="text-slate-400 hover:text-slate-700 p-1 rounded-md hover:bg-slate-200/70 transition-colors cursor-pointer"
           title="Close Materials Dock"
         >
           <X className="h-4 w-4" />
@@ -113,7 +107,7 @@ export function MaterialsColorsDock() {
       </div>
 
       {/* Tabs */}
-      <div className="px-3 py-2 border-b border-slate-800/80 bg-slate-950/40 flex items-center gap-1.5 overflow-x-auto scrollbar-none shrink-0">
+      <div className="px-3 py-2 border-b border-slate-100 bg-slate-50/50 flex items-center gap-1.5 overflow-x-auto scrollbar-none shrink-0">
         {[
           { id: "walls" as const, label: "Walls" },
           { id: "floor" as const, label: "Floor" },
@@ -125,10 +119,10 @@ export function MaterialsColorsDock() {
             key={tab.id}
             type="button"
             onClick={() => setActiveTab(tab.id)}
-            className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-colors cursor-pointer shrink-0 ${
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors cursor-pointer shrink-0 ${
               activeTab === tab.id
-                ? "bg-cyan-500 text-slate-950 shadow-xs"
-                : "bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200"
+                ? "bg-indigo-600 text-white shadow-xs font-semibold"
+                : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:border-slate-300"
             }`}
           >
             {tab.label}
@@ -138,8 +132,8 @@ export function MaterialsColorsDock() {
 
       {/* Notification Toast */}
       {notification && (
-        <div className="mx-3 mt-2 px-3 py-1.5 rounded-lg bg-emerald-950/60 border border-emerald-500/60 text-emerald-300 text-[10px] flex items-center gap-1.5 animate-in fade-in shrink-0">
-          <Check className="h-3 w-3 text-emerald-400 shrink-0" />
+        <div className="mx-3 mt-2 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-medium flex items-center gap-1.5 animate-in fade-in shrink-0">
+          <Check className="h-3 w-3 text-emerald-600 shrink-0" />
           <span className="truncate">{notification}</span>
         </div>
       )}
@@ -150,7 +144,7 @@ export function MaterialsColorsDock() {
         {activeTab === "walls" && (
           <div className="space-y-4">
             <div>
-              <span className="text-[10px] text-slate-400 uppercase tracking-widest block mb-2 font-bold">
+              <span className="text-xs font-semibold text-slate-700 block mb-2">
                 Wall Colors & Textures
               </span>
               <div className="grid grid-cols-2 gap-2">
@@ -159,17 +153,17 @@ export function MaterialsColorsDock() {
                     key={idx}
                     type="button"
                     onClick={() => handleApplyWallFinish(wc.finish, wc.hex)}
-                    className="p-2 rounded-lg bg-slate-900/80 border border-slate-800 hover:border-cyan-500 text-left transition-all flex items-center gap-2 group cursor-pointer"
+                    className="p-2 rounded-xl bg-slate-50/70 border border-slate-200 hover:border-indigo-400 text-left transition-all flex items-center gap-2 group cursor-pointer hover:bg-white shadow-xs"
                   >
                     <span
-                      className="h-5 w-5 rounded-md border border-slate-700 shrink-0 shadow-xs group-hover:scale-105 transition-transform"
+                      className="h-5 w-5 rounded-md border border-slate-300 shrink-0 shadow-xs group-hover:scale-105 transition-transform"
                       style={{ backgroundColor: wc.hex }}
                     />
                     <div className="min-w-0">
-                      <span className="text-[11px] font-bold text-white block truncate font-sans">
+                      <span className="text-xs font-medium text-slate-800 block truncate group-hover:text-indigo-600">
                         {wc.label}
                       </span>
-                      <span className="text-[9px] text-slate-500 block truncate">
+                      <span className="text-[10px] text-slate-400 block truncate font-mono">
                         {wc.hex}
                       </span>
                     </div>
@@ -178,8 +172,8 @@ export function MaterialsColorsDock() {
               </div>
             </div>
 
-            <div className="pt-2 border-t border-slate-800">
-              <span className="text-[10px] text-slate-400 uppercase tracking-widest block mb-2 font-bold">
+            <div className="pt-2 border-t border-slate-100">
+              <span className="text-xs font-semibold text-slate-700 block mb-2">
                 Architectural Wall Presets
               </span>
               <div className="space-y-1.5">
@@ -188,18 +182,18 @@ export function MaterialsColorsDock() {
                     key={key}
                     type="button"
                     onClick={() => handleApplyWallFinish(key as WallFinishType)}
-                    className="w-full p-2.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-cyan-500 text-left transition-all flex items-center justify-between group cursor-pointer"
+                    className="w-full p-2.5 rounded-xl bg-slate-50/70 border border-slate-200 hover:border-indigo-400 text-left transition-all flex items-center justify-between group cursor-pointer hover:bg-white shadow-xs"
                   >
                     <div>
-                      <span className="text-[11px] font-bold text-white block group-hover:text-cyan-300 font-sans">
+                      <span className="text-xs font-medium text-slate-800 block group-hover:text-indigo-600">
                         {spec.name}
                       </span>
-                      <span className="text-[9px] text-slate-500 block line-clamp-1">
+                      <span className="text-[10px] text-slate-500 block line-clamp-1 mt-0.5">
                         {spec.description}
                       </span>
                     </div>
                     <span
-                      className="h-3.5 w-3.5 rounded-full border border-slate-700 shrink-0"
+                      className="h-3.5 w-3.5 rounded-full border border-slate-300 shrink-0"
                       style={{ backgroundColor: '#' + spec.colorHex.toString(16).padStart(6, '0') }}
                     />
                   </button>
@@ -212,28 +206,28 @@ export function MaterialsColorsDock() {
         {/* FLOOR TAB */}
         {activeTab === "floor" && (
           <div className="space-y-3">
-            <span className="text-[10px] text-slate-400 uppercase tracking-widest block font-bold">
+            <span className="text-xs font-semibold text-slate-700 block">
               PBR Flooring Surfaces
             </span>
             <div className="space-y-2">
-              {flooringOptions.map((opt) => (
+              {Object.entries(FLOOR_FINISHES).map(([key, spec]) => (
                 <button
-                  key={opt.key}
+                  key={key}
                   type="button"
-                  onClick={() => handleApplyFloorFinish(opt.key)}
-                  className="w-full p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-cyan-500 text-left transition-all flex items-start justify-between group cursor-pointer"
+                  onClick={() => handleApplyFloorFinish(key as FloorFinishType)}
+                  className="w-full p-2.5 rounded-xl bg-slate-50/70 border border-slate-200 hover:border-indigo-400 text-left transition-all flex items-start justify-between group cursor-pointer hover:bg-white shadow-xs"
                 >
                   <div className="pr-2">
-                    <span className="text-[11px] font-bold text-white block group-hover:text-cyan-300 font-sans">
-                      {opt.name}
+                    <span className="text-xs font-medium text-slate-800 block group-hover:text-indigo-600">
+                      {spec.name}
                     </span>
-                    <span className="text-[9px] text-slate-400 block leading-tight mt-0.5">
-                      {opt.desc}
+                    <span className="text-[10px] text-slate-500 block leading-tight mt-0.5">
+                      {spec.description}
                     </span>
                   </div>
                   <span
-                    className="h-5 w-5 rounded-md border border-slate-700 shrink-0 mt-0.5"
-                    style={{ backgroundColor: opt.previewColor }}
+                    className="h-5 w-5 rounded-md border border-slate-300 shrink-0 mt-0.5 shadow-xs"
+                    style={{ backgroundColor: '#' + spec.colorHex.toString(16).padStart(6, '0') }}
                   />
                 </button>
               ))}
@@ -244,25 +238,25 @@ export function MaterialsColorsDock() {
         {/* FABRICS TAB */}
         {activeTab === "fabrics" && (
           <div className="space-y-3">
-            <span className="text-[10px] text-slate-400 uppercase tracking-widest block font-bold">
+            <span className="text-xs font-semibold text-slate-700 block">
               Upholstery & Fabrics
             </span>
             <div className="space-y-2">
               {sofaFabrics.map((fab, idx) => (
                 <div
                   key={idx}
-                  className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between"
+                  className="p-2.5 rounded-xl bg-slate-50/70 border border-slate-200 flex items-center justify-between"
                 >
                   <div className="flex items-center gap-2.5">
                     <span
-                      className="h-5 w-5 rounded-md border border-slate-700 shrink-0"
+                      className="h-5 w-5 rounded-md border border-slate-300 shrink-0"
                       style={{ backgroundColor: fab.color }}
                     />
                     <div>
-                      <span className="text-[11px] font-bold text-white block font-sans">
+                      <span className="text-xs font-medium text-slate-800 block">
                         {fab.name}
                       </span>
-                      <span className="text-[9px] text-slate-500 block">
+                      <span className="text-[10px] text-slate-500 block">
                         {fab.desc}
                       </span>
                     </div>
@@ -276,19 +270,19 @@ export function MaterialsColorsDock() {
         {/* RAILINGS TAB */}
         {activeTab === "railings" && (
           <div className="space-y-3">
-            <span className="text-[10px] text-slate-400 uppercase tracking-widest block font-bold">
+            <span className="text-xs font-semibold text-slate-700 block">
               Balcony & Stair Railings
             </span>
             <div className="space-y-2">
               {railingStyles.map((r, idx) => (
                 <div
                   key={idx}
-                  className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-cyan-500 transition-colors"
+                  className="p-2.5 rounded-xl bg-slate-50/70 border border-slate-200 hover:border-indigo-300 transition-colors"
                 >
-                  <span className="text-[11px] font-bold text-white block font-sans">
+                  <span className="text-xs font-medium text-slate-800 block">
                     {r.name}
                   </span>
-                  <span className="text-[9px] text-slate-400 block mt-0.5 leading-tight">
+                  <span className="text-[10px] text-slate-500 block mt-0.5 leading-tight">
                     {r.desc}
                   </span>
                 </div>
@@ -300,7 +294,7 @@ export function MaterialsColorsDock() {
         {/* CABINETRY TAB */}
         {activeTab === "wood" && (
           <div className="space-y-3">
-            <span className="text-[10px] text-slate-400 uppercase tracking-widest block font-bold">
+            <span className="text-xs font-semibold text-slate-700 block">
               Cabinetry & Modular Storage
             </span>
             <div className="space-y-2">
@@ -312,12 +306,12 @@ export function MaterialsColorsDock() {
               ].map((wood, idx) => (
                 <div
                   key={idx}
-                  className="p-2.5 rounded-lg bg-slate-900 border border-slate-800"
+                  className="p-2.5 rounded-xl bg-slate-50/70 border border-slate-200"
                 >
-                  <span className="text-[11px] font-bold text-white block font-sans">
+                  <span className="text-xs font-medium text-slate-800 block">
                     {wood.name}
                   </span>
-                  <span className="text-[9px] text-slate-400 block mt-0.5 leading-tight">
+                  <span className="text-[10px] text-slate-500 block mt-0.5 leading-tight">
                     {wood.desc}
                   </span>
                 </div>

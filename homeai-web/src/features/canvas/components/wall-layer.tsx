@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Wall } from '@/core/domain/types';
 import { Vector2D } from '@/core/geometry/vector';
 import { SubElementSelection } from '@/store/canvas-store';
+import { computeWallFootprints } from '@/core/geometry/wall-joins';
 
 interface WallLayerProps {
   walls: Wall[];
@@ -22,12 +23,15 @@ export function WallLayer({
   onSelectSubElement,
   onEndpointPointerDown,
 }: WallLayerProps) {
+  const footprints = useMemo(() => computeWallFootprints(walls), [walls]);
+
   return (
     <g className="wall-layer">
       {walls.map((wall) => {
         const isWallSelected = wall.id === selectedElementId && (!selectedSubElement || selectedSubElement.type === 'wall');
         const v = Vector2D.fromPoints(wall.start, wall.end);
         const angle = Math.atan2(v.y, v.x) * (180 / Math.PI);
+        const footprint = footprints.get(wall.id);
 
         // Wall Typology Styling
         let strokeColor = '#334155';
@@ -67,17 +71,28 @@ export function WallLayer({
               strokeWidth={Math.max(wall.thickness + 30, 40 / zoom)}
             />
 
-            {/* Actual Wall Body */}
-            <line
-              x1={wall.start.x}
-              y1={wall.start.y}
-              x2={wall.end.x}
-              y2={wall.end.y}
-              stroke={strokeColor}
-              strokeWidth={wall.thickness}
-              strokeLinecap="square"
-              strokeDasharray={strokeDash}
-            />
+            {/* Actual Wall Body with Parametric Clean Joins */}
+            {footprint && footprint.isValid && footprint.polygon.length >= 3 ? (
+              <polygon
+                points={footprint.polygon.map(p => `${p.x},${p.y}`).join(' ')}
+                fill={strokeColor}
+                stroke={isWallSelected ? '#4f46e5' : strokeColor}
+                strokeWidth={isWallSelected ? Math.max(3 / zoom, 2) : 1}
+                strokeLinejoin="round"
+                strokeDasharray={strokeDash}
+              />
+            ) : (
+              <line
+                x1={wall.start.x}
+                y1={wall.start.y}
+                x2={wall.end.x}
+                y2={wall.end.y}
+                stroke={strokeColor}
+                strokeWidth={wall.thickness}
+                strokeLinecap="square"
+                strokeDasharray={strokeDash}
+              />
+            )}
             
             {/* Render Doors Inline with Architectural Typologies */}
             {wall.doors.map((door) => {

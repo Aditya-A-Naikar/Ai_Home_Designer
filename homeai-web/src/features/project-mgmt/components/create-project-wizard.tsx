@@ -70,9 +70,13 @@ const spaceAmenities = [
   { id: "double_height", label: "Double-Height Void", desc: "Cutout mezzanine slab with glass balustrade view" },
 ];
 
-export function CreateProjectWizard() {
+interface CreateProjectWizardProps {
+  initialMode?: "ai_discovery" | "manual_cad";
+}
+
+export function CreateProjectWizard({ initialMode = "manual_cad" }: CreateProjectWizardProps = {}) {
   const router = useRouter();
-  const [intakeMode, setIntakeMode] = useState<"ai_discovery" | "manual_cad">("ai_discovery");
+  const [intakeMode, setIntakeMode] = useState<"ai_discovery" | "manual_cad">(initialMode);
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -263,48 +267,51 @@ export function CreateProjectWizard() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
-      {/* Studio Stepper Header */}
+      {/* Wizard Header */}
       <div className="mb-8 border-b border-slate-800 pb-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
           <div>
-            <span className="text-[10px] font-mono uppercase tracking-widest text-cyan-400">
-              PROJECT INITIALIZATION // BIM STUDIO
+            <span className="text-xs font-semibold uppercase tracking-wider text-cyan-400">
+              New Project Setup
             </span>
-            <h1 className="text-xl sm:text-2xl font-bold font-mono text-white mt-0.5">
-              Create New Architectural Project
+            <h1 className="text-2xl font-bold tracking-tight text-white mt-1">
+              Create New Project
             </h1>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Configure your home layout in 4 simple steps, or use the AI intake assistant.
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setIntakeMode("ai_discovery")}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cyan-800/60 bg-cyan-950/40 hover:bg-cyan-900/40 text-xs font-mono text-cyan-300 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cyan-700/60 bg-cyan-950/40 hover:bg-cyan-900/50 text-xs font-medium text-cyan-300 transition-colors cursor-pointer"
             >
               <Sparkles className="h-3.5 w-3.5" />
-              <span>AI Architect Intake</span>
+              <span>AI Guided Intake</span>
             </button>
-            <span className="text-xs font-mono text-slate-400 bg-slate-900 px-3 py-1 rounded border border-slate-800">
-              PHASE {step} OF 4
+            <span className="text-xs font-medium text-slate-300 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700">
+              Step {step} of 4
             </span>
           </div>
         </div>
 
         {/* Stepper Tabs */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-xs">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
           {[
-            { num: 1, label: "01 // TYPOLOGY" },
-            { num: 2, label: "02 // SITE & BOUNDARY" },
-            { num: 3, label: "03 // SPATIAL PROGRAM" },
-            { num: 4, label: "04 // CODES & STYLE" },
+            { num: 1, label: "1. House Type" },
+            { num: 2, label: "2. Plot & Setbacks" },
+            { num: 3, label: "3. Rooms & Spaces" },
+            { num: 4, label: "4. Style & Standards" },
           ].map((s) => (
             <div
               key={s.num}
-              className={`p-2.5 rounded border transition-colors ${
+              className={`p-3 rounded-xl border transition-all ${
                 step === s.num
-                  ? "bg-cyan-950/60 border-cyan-500/60 text-cyan-300 font-bold"
+                  ? "bg-cyan-950/60 border-cyan-500/60 text-cyan-300 font-semibold shadow-xs"
                   : step > s.num
                   ? "bg-slate-900/90 border-slate-700 text-emerald-400 font-medium"
-                  : "bg-slate-950 border-slate-800 text-slate-500"
+                  : "bg-slate-900/40 border-slate-800/80 text-slate-500"
               }`}
             >
               <div className="flex items-center justify-between">
@@ -316,43 +323,43 @@ export function CreateProjectWizard() {
         </div>
       </div>
 
-      {/* Main Studio Step Canvas */}
-      <div className="rounded-xl border border-slate-800 bg-[#0c121e] p-6 sm:p-8 shadow-xl">
+      {/* Main Step Canvas */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 sm:p-8 shadow-xl backdrop-blur-xs">
         {/* STEP 1: House Typology & Duplex Configuration */}
         {step === 1 && (
           <div className="space-y-6">
             <div>
-              <h2 className="text-lg font-bold font-mono text-white">Residential Typology & Massing</h2>
+              <h2 className="text-lg font-bold text-white">House Type & Levels</h2>
               <p className="mt-1 text-xs text-slate-400">
-                Choose the structural framing envelope. Duplex projects activate multi-floor vertical coordination with stair clearances.
+                Choose the structure of your residence. Multi-level duplexes automatically configure internal stairs and multi-floor coordination.
               </p>
             </div>
 
             {/* Project Name Input */}
             <div>
-              <label className="block text-xs font-mono text-slate-300 mb-1.5 uppercase tracking-wider">
-                Project Title <span className="text-cyan-400">*</span>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                Project Name <span className="text-cyan-400">*</span>
               </label>
               <input
                 type="text"
-                placeholder="e.g. Skyline Duplex Villa — Lot 42"
+                placeholder="e.g. Maple Creek Villa or Urban Duplex"
                 value={name}
                 onChange={(e) => {
                   setName(e.target.value);
                   if (errors.name) setErrors({});
                 }}
-                className="w-full rounded bg-slate-900 border border-slate-700 px-3.5 py-2.5 text-sm font-mono text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                className="w-full rounded-xl bg-slate-950 border border-slate-700 px-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-hidden focus:border-cyan-500 transition-colors"
                 autoFocus
               />
               {errors.name && (
-                <p className="mt-1 text-xs font-mono text-red-400">{errors.name}</p>
+                <p className="mt-1.5 text-xs text-red-400">{errors.name}</p>
               )}
             </div>
 
             {/* Typology Cards Grid */}
             <div>
-              <label className="block text-xs font-mono text-slate-300 mb-2 uppercase tracking-wider">
-                Select Structural Typology
+              <label className="block text-xs font-semibold text-slate-300 mb-2">
+                Select Residence Type
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {typologyOptions.map((opt) => (
@@ -367,15 +374,15 @@ export function CreateProjectWizard() {
                         setFloorsCount(1);
                       }
                     }}
-                    className={`p-4 rounded-lg border text-left transition-all ${
+                    className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
                       typology === opt.id
                         ? "border-cyan-500 bg-cyan-950/40 shadow-sm"
-                        : "border-slate-800 bg-slate-900/60 hover:bg-slate-900 hover:border-slate-700"
+                        : "border-slate-800 bg-slate-950/50 hover:bg-slate-900 hover:border-slate-700"
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="font-bold text-sm font-mono text-white">{opt.label}</span>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-cyan-300 border border-slate-700">
+                      <span className="font-semibold text-sm text-white">{opt.label}</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-cyan-300 border border-slate-700">
                         {opt.badge}
                       </span>
                     </div>
@@ -387,15 +394,15 @@ export function CreateProjectWizard() {
 
             {/* Duplex Architectural Specification Box */}
             {isDuplexSelected && (
-              <div className="p-5 bg-slate-900/80 border border-cyan-800/60 rounded-lg space-y-4 font-mono text-xs">
+              <div className="p-5 bg-slate-950/60 border border-cyan-800/40 rounded-xl space-y-4 text-xs">
                 <div className="flex items-center gap-2 text-cyan-300 border-b border-slate-800 pb-3">
                   <Layers className="h-4 w-4 text-cyan-400" />
-                  <span className="font-bold tracking-wide">DUPLEX VERTICAL SHAFT SPECIFICATION</span>
+                  <span className="font-semibold">Staircase & Multi-Level Options</span>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] text-slate-300 mb-2 uppercase">
-                    Connecting Staircase Flight Geometry
+                  <label className="block text-[11px] font-medium text-slate-300 mb-2">
+                    Connecting Staircase Style
                   </label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {stairOptions.slice(0, 4).map((s) => (
@@ -403,13 +410,13 @@ export function CreateProjectWizard() {
                         key={s.id}
                         type="button"
                         onClick={() => setStairType(s.id)}
-                        className={`p-2.5 rounded border text-left transition-colors ${
+                        className={`p-2.5 rounded-lg border text-left transition-colors cursor-pointer ${
                           stairType === s.id
                             ? "bg-cyan-950/80 border-cyan-400 text-cyan-200"
                             : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200"
                         }`}
                       >
-                        <span className="block font-bold text-xs text-white">{s.label}</span>
+                        <span className="block font-medium text-xs text-white">{s.label}</span>
                         <span className="text-[10px] text-slate-400 block mt-0.5">{s.desc}</span>
                       </button>
                     ))}
@@ -421,12 +428,12 @@ export function CreateProjectWizard() {
                     type="checkbox"
                     checked={doubleHeightVoid}
                     onChange={(e) => setDoubleHeightVoid(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-0"
+                    className="mt-0.5 h-4 w-4 rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-0 cursor-pointer"
                   />
                   <div>
-                    <span className="text-xs font-bold text-slate-200">Include Double-Height Living Room Void</span>
+                    <span className="text-xs font-semibold text-slate-200">Include Double-Height Living Room Ceiling</span>
                     <p className="text-[11px] text-slate-400 mt-0.5">
-                      First floor slab receives a registered void opening with balustrade boundary overlooking ground living space.
+                      Creates an open mezzanine opening with glass balustrade overlooking the ground-floor living area.
                     </p>
                   </div>
                 </label>
@@ -439,39 +446,39 @@ export function CreateProjectWizard() {
         {step === 2 && (
           <div className="space-y-6">
             <div>
-              <h2 className="text-lg font-bold font-mono text-white">Plot Boundary & Statutory Margins</h2>
+              <h2 className="text-lg font-bold text-white">Plot Size & Boundary Margins</h2>
               <p className="mt-1 text-xs text-slate-400">
-                Establish the site coordinate frame, road orientation for solar daylighting, and statutory setback margins.
+                Specify your site boundary dimensions, road orientation for optimal sunlight, and required setback margins.
               </p>
             </div>
 
             {/* Measurement System Selector */}
             <div>
-              <label className="block text-xs font-mono text-slate-300 mb-1.5 uppercase">
-                CAD Measurement Unit
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                Measurement System
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
                   onClick={() => handleUnitSystemChange("metric")}
-                  className={`py-2 px-3 rounded border text-xs font-mono transition-colors ${
+                  className={`py-2 px-3 rounded-xl border text-xs font-medium transition-colors cursor-pointer ${
                     unitSystem === "metric"
-                      ? "border-cyan-500 bg-cyan-950/50 text-cyan-300 font-bold"
-                      : "border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200"
+                      ? "border-cyan-500 bg-cyan-950/50 text-cyan-300 font-semibold"
+                      : "border-slate-800 bg-slate-950/60 text-slate-400 hover:text-slate-200"
                   }`}
                 >
-                  Metric (Meters / m) • SI Standard
+                  Metric (Meters / m)
                 </button>
                 <button
                   type="button"
                   onClick={() => handleUnitSystemChange("imperial")}
-                  className={`py-2 px-3 rounded border text-xs font-mono transition-colors ${
+                  className={`py-2 px-3 rounded-xl border text-xs font-medium transition-colors cursor-pointer ${
                     unitSystem === "imperial"
-                      ? "border-cyan-500 bg-cyan-950/50 text-cyan-300 font-bold"
-                      : "border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200"
+                      ? "border-cyan-500 bg-cyan-950/50 text-cyan-300 font-semibold"
+                      : "border-slate-800 bg-slate-950/60 text-slate-400 hover:text-slate-200"
                   }`}
                 >
-                  Imperial (Feet / ft) • US Standard
+                  Imperial (Feet / ft)
                 </button>
               </div>
             </div>
@@ -479,7 +486,7 @@ export function CreateProjectWizard() {
             {/* Plot Dimensions */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-mono text-slate-300 mb-1.5 uppercase">
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                   Plot Width ({preferredUnit}) <span className="text-cyan-400">*</span>
                 </label>
                 <input
@@ -488,11 +495,11 @@ export function CreateProjectWizard() {
                   step="0.5"
                   value={plotWidth}
                   onChange={(e) => setPlotWidth(Number(e.target.value))}
-                  className="w-full rounded bg-slate-900 border border-slate-700 px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-cyan-500"
+                  className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3.5 py-2 text-sm text-white focus:outline-hidden focus:border-cyan-500"
                 />
               </div>
               <div>
-                <label className="block text-xs font-mono text-slate-300 mb-1.5 uppercase">
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                   Plot Depth ({preferredUnit}) <span className="text-cyan-400">*</span>
                 </label>
                 <input
@@ -501,35 +508,35 @@ export function CreateProjectWizard() {
                   step="0.5"
                   value={plotDepth}
                   onChange={(e) => setPlotDepth(Number(e.target.value))}
-                  className="w-full rounded bg-slate-900 border border-slate-700 px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-cyan-500"
+                  className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3.5 py-2 text-sm text-white focus:outline-hidden focus:border-cyan-500"
                 />
               </div>
             </div>
 
             {/* Road Facing Cardinal Compass */}
             <div>
-              <label className="block text-xs font-mono text-slate-300 mb-1.5 uppercase flex items-center gap-1.5">
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
                 <Compass className="h-3.5 w-3.5 text-cyan-400" />
-                <span>Road Frontage Orientation (Daylight & Entry Azimuth)</span>
+                <span>Road Facing Direction (Main Entrance & Daylight)</span>
               </label>
-              <div className="grid grid-cols-4 gap-2 font-mono text-xs">
+              <div className="grid grid-cols-4 gap-2 text-xs">
                 {[
                   { id: "N", label: "North (N)", hint: "Diffused Daylight" },
                   { id: "E", label: "East (E)", hint: "Morning Sunlight" },
-                  { id: "S", label: "South (S)", hint: "Solar Heat Gain" },
-                  { id: "W", label: "West (W)", hint: "Late Afternoon Sun" },
+                  { id: "S", label: "South (S)", hint: "All-Day Sunlight" },
+                  { id: "W", label: "West (W)", hint: "Afternoon Light" },
                 ].map((dir) => (
                   <button
                     key={dir.id}
                     type="button"
                     onClick={() => setRoadFacing(dir.id as CompassOrientation)}
-                    className={`p-2.5 rounded border text-center transition-colors ${
+                    className={`p-2.5 rounded-xl border text-center transition-colors cursor-pointer ${
                       roadFacing === dir.id
-                        ? "border-cyan-500 bg-cyan-950/60 font-bold text-cyan-300"
-                        : "border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200"
+                        ? "border-cyan-500 bg-cyan-950/60 font-semibold text-cyan-300"
+                        : "border-slate-800 bg-slate-950/50 text-slate-400 hover:text-slate-200"
                     }`}
                   >
-                    <span className="block font-bold text-xs">{dir.label}</span>
+                    <span className="block font-semibold text-xs">{dir.label}</span>
                     <span className="text-[10px] text-slate-500 block mt-0.5">{dir.hint}</span>
                   </button>
                 ))}
@@ -537,46 +544,46 @@ export function CreateProjectWizard() {
             </div>
 
             {/* Municipal Setbacks (Margins) */}
-            <div className="p-4 bg-slate-900/80 rounded-lg border border-slate-800 space-y-3 font-mono text-xs">
-              <span className="font-bold text-slate-300 uppercase tracking-wider block">
-                Statutory Setback Margins ({preferredUnit})
+            <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-800 space-y-3 text-xs">
+              <span className="font-semibold text-slate-300 block">
+                Required Setback Margins ({preferredUnit})
               </span>
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="text-[10px] text-slate-500 uppercase block mb-1">Front Setback</label>
+                  <label className="text-[10px] text-slate-400 uppercase tracking-wider block mb-1">Front Setback</label>
                   <input
                     type="number"
                     step="0.5"
                     value={frontSetback}
                     onChange={(e) => setFrontSetback(Number(e.target.value))}
-                    className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-200 font-mono text-xs"
+                    className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 text-xs"
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-slate-500 uppercase block mb-1">Rear Margin</label>
+                  <label className="text-[10px] text-slate-400 uppercase tracking-wider block mb-1">Rear Margin</label>
                   <input
                     type="number"
                     step="0.5"
                     value={rearSetback}
                     onChange={(e) => setRearSetback(Number(e.target.value))}
-                    className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-200 font-mono text-xs"
+                    className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 text-xs"
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-slate-500 uppercase block mb-1">Side Margins</label>
+                  <label className="text-[10px] text-slate-400 uppercase tracking-wider block mb-1">Side Margins</label>
                   <input
                     type="number"
                     step="0.5"
                     value={sideSetback}
                     onChange={(e) => setSideSetback(Number(e.target.value))}
-                    className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-200 font-mono text-xs"
+                    className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 text-xs"
                   />
                 </div>
               </div>
 
               <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-[11px]">
-                <span className="text-slate-400">Total Site: <strong className="text-white">{formatArea(plotAreaSqMm, unitSystem)}</strong></span>
-                <span className="text-cyan-400 font-bold">Buildable Envelope: {formatArea(buildableAreaSqMm, unitSystem)}</span>
+                <span className="text-slate-400">Total Plot Area: <strong className="text-white font-mono">{formatArea(plotAreaSqMm, unitSystem)}</strong></span>
+                <span className="text-cyan-400 font-semibold">Buildable Area: <span className="font-mono">{formatArea(buildableAreaSqMm, unitSystem)}</span></span>
               </div>
             </div>
           </div>
@@ -586,30 +593,30 @@ export function CreateProjectWizard() {
         {step === 3 && (
           <div className="space-y-6">
             <div>
-              <h2 className="text-lg font-bold font-mono text-white">Spatial Programme & Room Allocation</h2>
+              <h2 className="text-lg font-bold text-white">Rooms & Dedicated Spaces</h2>
               <p className="mt-1 text-xs text-slate-400">
-                Specify target bedroom configurations and dedicated functional amenities.
+                Choose how many bedrooms you require, plus any specialized amenities.
               </p>
             </div>
 
             {/* BHK Selector */}
             <div>
-              <label className="block text-xs font-mono text-slate-300 mb-1.5 uppercase">
-                Bedrooms Configuration (BHK)
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                Bedrooms Configuration
               </label>
-              <div className="grid grid-cols-5 gap-2 font-mono text-xs">
+              <div className="grid grid-cols-5 gap-2 text-xs">
                 {[1, 2, 3, 4, 5].map((bhk) => (
                   <button
                     key={bhk}
                     type="button"
                     onClick={() => setBhkCount(bhk)}
-                    className={`py-2 px-3 rounded border text-center transition-colors ${
+                    className={`py-2 px-3 rounded-xl border text-center transition-colors cursor-pointer ${
                       bhkCount === bhk
-                        ? "border-cyan-500 bg-cyan-950/60 font-bold text-cyan-300"
-                        : "border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200"
+                        ? "border-cyan-500 bg-cyan-950/60 font-semibold text-cyan-300"
+                        : "border-slate-800 bg-slate-950/50 text-slate-400 hover:text-slate-200"
                     }`}
                   >
-                    <span className="block font-bold">{bhk} BHK</span>
+                    <span className="block font-semibold text-xs">{bhk} BHK</span>
                     <span className="text-[10px] text-slate-500 block">{bhk} Suites</span>
                   </button>
                 ))}
@@ -618,8 +625,8 @@ export function CreateProjectWizard() {
 
             {/* Specialized Amenities Grid */}
             <div>
-              <label className="block text-xs font-mono text-slate-300 mb-2 uppercase">
-                Functional Space Requirements
+              <label className="block text-xs font-semibold text-slate-300 mb-2">
+                Specialized Living Spaces
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {spaceAmenities.map((amenity) => {
@@ -629,17 +636,17 @@ export function CreateProjectWizard() {
                       key={amenity.id}
                       type="button"
                       onClick={() => toggleAmenity(amenity.id)}
-                      className={`p-3 rounded-lg border text-left flex items-start justify-between gap-3 transition-colors ${
+                      className={`p-3 rounded-xl border text-left flex items-start justify-between gap-3 transition-colors cursor-pointer ${
                         isChecked
                           ? "bg-cyan-950/40 border-cyan-500/60 text-slate-200"
-                          : "bg-slate-900/60 border-slate-800 text-slate-400 hover:bg-slate-900"
+                          : "bg-slate-950/50 border-slate-800 text-slate-400 hover:bg-slate-900"
                       }`}
                     >
                       <div>
-                        <span className="text-xs font-mono font-bold text-white block">{amenity.label}</span>
+                        <span className="text-xs font-semibold text-white block">{amenity.label}</span>
                         <span className="text-[11px] text-slate-400 block mt-0.5">{amenity.desc}</span>
                       </div>
-                      <div className={`h-4 w-4 rounded shrink-0 flex items-center justify-center border ${isChecked ? "bg-cyan-500 border-cyan-400 text-slate-950" : "border-slate-700"}`}>
+                      <div className={`h-4 w-4 rounded-md shrink-0 flex items-center justify-center border ${isChecked ? "bg-cyan-500 border-cyan-400 text-slate-950" : "border-slate-700"}`}>
                         {isChecked && <CheckCircle2 className="h-3 w-3" />}
                       </div>
                     </button>
@@ -654,15 +661,15 @@ export function CreateProjectWizard() {
         {step === 4 && (
           <div className="space-y-6">
             <div>
-              <h2 className="text-lg font-bold font-mono text-white">Regulatory Standards & Aesthetics</h2>
+              <h2 className="text-lg font-bold text-white">Design Style & Standards</h2>
               <p className="mt-1 text-xs text-slate-400">
-                Select architectural vocabulary and statutory building code standards for algorithmic compliance checks.
+                Select your architectural aesthetic and statutory building code guidelines.
               </p>
             </div>
 
             {/* Architectural Style */}
             <div>
-              <label className="block text-xs font-mono text-slate-300 mb-1.5 uppercase">
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                 Architectural Style
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -671,13 +678,13 @@ export function CreateProjectWizard() {
                     key={opt.id}
                     type="button"
                     onClick={() => setStyle(opt.id)}
-                    className={`p-3.5 rounded-lg border text-left transition-colors ${
+                    className={`p-3.5 rounded-xl border text-left transition-colors cursor-pointer ${
                       style === opt.id
                         ? "border-cyan-500 bg-cyan-950/40 text-cyan-200 font-semibold"
-                        : "border-slate-800 bg-slate-900/60 text-slate-400 hover:text-slate-200"
+                        : "border-slate-800 bg-slate-950/50 text-slate-400 hover:text-slate-200"
                     }`}
                   >
-                    <span className="block text-xs font-mono font-bold text-white">{opt.label}</span>
+                    <span className="block text-xs font-semibold text-white">{opt.label}</span>
                     <span className="text-[11px] text-slate-400 block mt-0.5">{opt.desc}</span>
                   </button>
                 ))}
@@ -685,39 +692,39 @@ export function CreateProjectWizard() {
             </div>
 
             {/* Vaastu & Building Code Toggles */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 font-mono text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 text-xs">
               <div 
                 onClick={() => setVaastuCompliant(!vaastuCompliant)}
-                className={`p-3.5 rounded-lg border flex items-center justify-between cursor-pointer transition-colors ${
-                  vaastuCompliant ? "bg-emerald-950/40 border-emerald-500/60 text-emerald-300" : "bg-slate-900 border-slate-800 text-slate-400"
+                className={`p-3.5 rounded-xl border flex items-center justify-between cursor-pointer transition-colors ${
+                  vaastuCompliant ? "bg-emerald-950/40 border-emerald-500/60 text-emerald-300" : "bg-slate-950/50 border-slate-800 text-slate-400"
                 }`}
               >
                 <div className="flex items-center gap-2.5">
                   <Sun className={`h-4 w-4 ${vaastuCompliant ? "text-emerald-400" : "text-slate-500"}`} />
                   <div>
-                    <span className="text-xs font-bold text-white block">Vaastu Shastra Guidance</span>
-                    <span className="text-[10px] text-slate-400 block mt-0.5">SE Kitchen, SW Master, NE Puja</span>
+                    <span className="text-xs font-semibold text-white block">Vaastu Shastra Guidance</span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">South-East Kitchen, North-East Puja</span>
                   </div>
                 </div>
-                <div className={`h-4 w-4 rounded flex items-center justify-center border ${vaastuCompliant ? "bg-emerald-500 border-emerald-400 text-slate-950" : "border-slate-700"}`}>
+                <div className={`h-4 w-4 rounded-md flex items-center justify-center border ${vaastuCompliant ? "bg-emerald-500 border-emerald-400 text-slate-950" : "border-slate-700"}`}>
                   {vaastuCompliant && <CheckCircle2 className="h-3 w-3" />}
                 </div>
               </div>
 
               <div 
                 onClick={() => setBuildingCode(buildingCode === "nbc" ? "ibc" : "nbc")}
-                className="p-3.5 rounded-lg border border-slate-800 bg-slate-900/80 flex items-center justify-between cursor-pointer hover:border-slate-700 transition-colors"
+                className="p-3.5 rounded-xl border border-slate-800 bg-slate-950/50 flex items-center justify-between cursor-pointer hover:border-slate-700 transition-colors"
               >
                 <div className="flex items-center gap-2.5">
                   <ShieldCheck className="h-4 w-4 text-cyan-400" />
                   <div>
-                    <span className="text-xs font-bold text-white block">Statutory Building Code</span>
+                    <span className="text-xs font-semibold text-white block">Building Code Standards</span>
                     <span className="text-[10px] text-slate-400 block mt-0.5">
                       {buildingCode === "nbc" ? "NBC 2024 (National Code)" : "IBC 2024 (International)"}
                     </span>
                   </div>
                 </div>
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-cyan-300 uppercase border border-slate-700">
+                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-cyan-300 uppercase border border-slate-700">
                   {buildingCode.toUpperCase()}
                 </span>
               </div>
@@ -726,12 +733,12 @@ export function CreateProjectWizard() {
         )}
 
         {/* Stepper Navigation Footer */}
-        <div className="mt-8 flex items-center justify-between border-t border-slate-800 pt-5 font-mono">
+        <div className="mt-8 flex items-center justify-between border-t border-slate-800 pt-5">
           {step > 1 ? (
             <button
               type="button"
               onClick={handleBack}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded border border-slate-700 bg-slate-900 hover:bg-slate-800 text-xs font-medium text-slate-300 transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-800 text-xs font-medium text-slate-300 transition-colors cursor-pointer"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
               <span>Back</span>
@@ -742,9 +749,9 @@ export function CreateProjectWizard() {
             <button
               type="button"
               onClick={handleNext}
-              className="inline-flex items-center gap-2 px-5 py-2 rounded bg-cyan-500 hover:bg-cyan-400 text-xs font-bold text-slate-950 transition-colors"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-xs font-semibold text-white transition-colors cursor-pointer"
             >
-              <span>Continue Phase {step + 1}</span>
+              <span>Continue to Step {step + 1}</span>
               <ArrowRight className="h-3.5 w-3.5" />
             </button>
           ) : (
@@ -752,14 +759,14 @@ export function CreateProjectWizard() {
               type="button"
               onClick={handleCreate}
               disabled={isSubmitting}
-              className="inline-flex items-center gap-2 px-6 py-2.5 rounded bg-cyan-500 hover:bg-cyan-400 text-xs font-bold text-slate-950 transition-all shadow-md active:translate-y-0.5"
+              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-xs font-semibold text-white transition-all shadow-md active:translate-y-0.5 cursor-pointer disabled:opacity-60"
             >
               {isSubmitting ? (
-                <span>Compiling BIM Model...</span>
+                <span>Creating Project...</span>
               ) : (
                 <>
                   <Box className="h-3.5 w-3.5" />
-                  <span>Launch CAD Studio</span>
+                  <span>Create Project & Open Editor</span>
                 </>
               )}
             </button>

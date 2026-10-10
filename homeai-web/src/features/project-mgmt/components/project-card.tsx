@@ -141,7 +141,7 @@ export function ProjectCard({ project, onDuplicate, onDelete }: ProjectCardProps
           <div className="flex items-start justify-between gap-2">
             <Link
               href={`/editor/${project.id}`}
-              className="text-base font-bold text-white hover:text-cyan-400 transition-colors line-clamp-1 font-mono tracking-tight"
+              className="text-base font-bold text-white hover:text-cyan-400 transition-colors line-clamp-1 tracking-tight"
             >
               {project.name}
             </Link>
@@ -153,24 +153,24 @@ export function ProjectCard({ project, onDuplicate, onDelete }: ProjectCardProps
         </div>
 
         {/* CAD Specification Strip */}
-        <div className="mt-4 pt-3 border-t border-slate-800/80 grid grid-cols-3 gap-2 text-center font-mono text-[11px]">
-          <div className="p-1.5 rounded bg-slate-900/60 border border-slate-800 text-slate-300">
-            <span className="text-[9px] text-slate-500 block uppercase">Walls</span>
+        <div className="mt-4 pt-3 border-t border-slate-800/80 grid grid-cols-3 gap-2 text-center text-xs">
+          <div className="p-1.5 rounded-lg bg-slate-900/60 border border-slate-800 text-slate-300">
+            <span className="text-[10px] text-slate-500 block uppercase font-medium">Walls</span>
             <span className="font-bold text-slate-200">{totalWalls}</span>
           </div>
-          <div className="p-1.5 rounded bg-slate-900/60 border border-slate-800 text-slate-300">
-            <span className="text-[9px] text-slate-500 block uppercase">Rooms</span>
+          <div className="p-1.5 rounded-lg bg-slate-900/60 border border-slate-800 text-slate-300">
+            <span className="text-[10px] text-slate-500 block uppercase font-medium">Rooms</span>
             <span className="font-bold text-slate-200">{totalRooms}</span>
           </div>
-          <div className="p-1.5 rounded bg-slate-900/60 border border-slate-800 text-slate-300">
-            <span className="text-[9px] text-slate-500 block uppercase">Stairs</span>
+          <div className="p-1.5 rounded-lg bg-slate-900/60 border border-slate-800 text-slate-300">
+            <span className="text-[10px] text-slate-500 block uppercase font-medium">Stairs</span>
             <span className="font-bold text-slate-200">{totalStairs}</span>
           </div>
         </div>
 
-        <div className="mt-3 flex items-center justify-between text-[10px] font-mono text-slate-500">
-          <span>UPDATED: {updatedDate}</span>
-          <span className="text-cyan-400/80 uppercase">{project.settings.preferredUnit.toUpperCase()} CAD</span>
+        <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+          <span>Updated {updatedDate}</span>
+          <span className="text-cyan-400/80 font-medium uppercase text-[11px]">{project.settings.preferredUnit.toUpperCase()} CAD</span>
         </div>
       </div>
 
@@ -179,14 +179,14 @@ export function ProjectCard({ project, onDuplicate, onDelete }: ProjectCardProps
         <div className="flex items-center gap-2">
           <Link
             href={`/editor/${project.id}`}
-            className="inline-flex items-center gap-1.5 rounded bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 px-3 py-1.5 text-xs font-mono font-semibold transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 px-3 py-1.5 text-xs font-semibold transition-colors"
           >
             <Pencil className="h-3 w-3" />
             <span>2D Plan</span>
           </Link>
           <Link
             href={`/editor/${project.id}?view=3d`}
-            className="inline-flex items-center gap-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-1.5 text-xs font-mono font-semibold transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-1.5 text-xs font-semibold transition-colors"
           >
             <Box className="h-3 w-3 text-cyan-400" />
             <span>3D Model</span>
@@ -198,7 +198,7 @@ export function ProjectCard({ project, onDuplicate, onDelete }: ProjectCardProps
             type="button"
             onClick={() => onDuplicate(project.id)}
             title="Duplicate Project"
-            className="rounded p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-colors"
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-colors cursor-pointer"
             aria-label="Duplicate Project"
           >
             <Copy className="h-3.5 w-3.5" />
@@ -207,7 +207,7 @@ export function ProjectCard({ project, onDuplicate, onDelete }: ProjectCardProps
             type="button"
             onClick={() => onDelete(project.id)}
             title="Delete Project"
-            className="rounded p-1.5 text-slate-400 hover:bg-red-950/50 hover:text-red-400 transition-colors"
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-red-950/50 hover:text-red-400 transition-colors cursor-pointer"
             aria-label="Delete Project"
           >
             <Trash2 className="h-3.5 w-3.5" />

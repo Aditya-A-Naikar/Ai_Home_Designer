@@ -8,7 +8,7 @@ import { useCanvasStore } from '@/store/canvas-store';
 
 export function FloorManager() {
   const { currentProject, addFloor, deleteFloor, setActiveFloor } = useProjectStore();
-  const { showUnderlay, toggleShowUnderlay } = useCanvasStore();
+  const { showUnderlay, toggleShowUnderlay, underlayOpacity, setUnderlayOpacity } = useCanvasStore();
   
   if (!currentProject) return null;
 
@@ -75,7 +75,7 @@ export function FloorManager() {
                 <span className={`h-2 w-2 rounded-full ${isActive ? 'bg-indigo-600' : 'bg-slate-300'}`} />
                 <span>{floor.name}</span>
                 <span className="text-[10px] text-slate-400 font-normal">
-                  (+{(floor.elevation / 1000).toFixed(1)}m)
+                  (+{(floor.elevation / 1000).toFixed(1)}m • H: {((floor.height || 2800) / 1000).toFixed(1)}m)
                 </span>
               </div>
               
@@ -100,21 +100,38 @@ export function FloorManager() {
 
       {/* Underlay / Ghosting shortcut toggle for upper floors */}
       {currentProject.floors.length > 1 && (
-        <button
-          onClick={toggleShowUnderlay}
-          className={`w-full py-1 px-2 rounded text-[11px] font-medium flex items-center justify-between transition-colors border cursor-pointer ${
-            showUnderlay 
-              ? 'bg-amber-50/70 border-amber-200 text-amber-800' 
-              : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
-          }`}
-          title="Faintly overlays walls and columns from the floor below"
-        >
-          <span className="flex items-center gap-1.5">
-            {showUnderlay ? <Eye className="h-3 w-3 text-amber-600" /> : <EyeOff className="h-3 w-3" />}
-            <span>Inter-Floor Ghosting</span>
-          </span>
-          <span className="text-[9px] font-bold uppercase">{showUnderlay ? 'Visible' : 'Hidden'}</span>
-        </button>
+        <div className="space-y-1.5 pt-1">
+          <button
+            onClick={toggleShowUnderlay}
+            className={`w-full py-1 px-2 rounded text-[11px] font-medium flex items-center justify-between transition-colors border cursor-pointer ${
+              showUnderlay 
+                ? 'bg-amber-50/70 border-amber-200 text-amber-800' 
+                : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
+            }`}
+            title="Faintly overlays walls and columns from the floor below"
+          >
+            <span className="flex items-center gap-1.5">
+              {showUnderlay ? <Eye className="h-3 w-3 text-amber-600" /> : <EyeOff className="h-3 w-3" />}
+              <span>Inter-Floor Ghosting</span>
+            </span>
+            <span className="text-[9px] font-bold uppercase">{showUnderlay ? 'Visible' : 'Hidden'}</span>
+          </button>
+
+          {showUnderlay && (
+            <div className="flex items-center justify-between text-[10px] text-slate-500 px-1">
+              <span>Opacity: {Math.round((underlayOpacity ?? 0.35) * 100)}%</span>
+              <input
+                type="range"
+                min="10"
+                max="80"
+                value={Math.round((underlayOpacity ?? 0.35) * 100)}
+                onChange={(e) => setUnderlayOpacity(Number(e.target.value) / 100)}
+                className="w-24 h-1.5 accent-amber-600 cursor-pointer"
+                title="Adjust Ghost Underlay Transparency"
+              />
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

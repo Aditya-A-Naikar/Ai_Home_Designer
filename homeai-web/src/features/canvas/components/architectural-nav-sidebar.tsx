@@ -20,7 +20,9 @@ import {
   ChevronLeft, 
   ChevronRight,
   Compass,
-  Cpu
+  Cpu,
+  SlidersHorizontal,
+  Armchair
 } from "lucide-react";
 
 interface ArchitecturalNavSidebarProps {
@@ -42,12 +44,8 @@ export function ArchitecturalNavSidebar({
   const {
     viewMode,
     setViewMode,
-    aiAdvisorOpen,
-    setAIAdvisorOpen,
-    materialsDockOpen,
-    setMaterialsDockOpen,
-    catalogDockOpen,
-    setCatalogDockOpen,
+    activeDrawer,
+    toggleDrawer,
     walkthroughActive,
     setWalkthroughActive,
   } = useCanvasStore();
@@ -78,8 +76,8 @@ export function ArchitecturalNavSidebar({
       id: "ai_chat",
       label: "AI Chat",
       icon: <Bot className="h-4 w-4" />,
-      active: aiAdvisorOpen,
-      onClick: () => setAIAdvisorOpen(!aiAdvisorOpen),
+      active: activeDrawer === "ai",
+      onClick: () => toggleDrawer("ai"),
       type: "action" as const,
     },
     {
@@ -105,15 +103,27 @@ export function ArchitecturalNavSidebar({
       type: "action" as const,
     },
     {
-      id: "customization",
-      label: "Customization",
+      id: "catalog",
+      label: "Furniture & Decor",
+      icon: <Armchair className="h-4 w-4" />,
+      active: activeDrawer === "catalog",
+      onClick: () => toggleDrawer("catalog"),
+      type: "action" as const,
+    },
+    {
+      id: "materials",
+      label: "Materials & Finishes",
       icon: <Palette className="h-4 w-4" />,
-      active: materialsDockOpen || catalogDockOpen,
-      onClick: () => {
-        setViewMode("3d");
-        setMaterialsDockOpen(!materialsDockOpen);
-        setCatalogDockOpen(!catalogDockOpen);
-      },
+      active: activeDrawer === "materials",
+      onClick: () => toggleDrawer("materials"),
+      type: "action" as const,
+    },
+    {
+      id: "properties",
+      label: "Properties & Tools",
+      icon: <SlidersHorizontal className="h-4 w-4" />,
+      active: activeDrawer === "properties",
+      onClick: () => toggleDrawer("properties"),
       type: "action" as const,
     },
     {
@@ -159,23 +169,23 @@ export function ArchitecturalNavSidebar({
 
   return (
     <aside
-      className={`h-full bg-[#070b14] border-r border-slate-800/80 flex flex-col shrink-0 select-none z-30 transition-all duration-200 font-mono ${
+      className={`h-full bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 select-none z-30 transition-all duration-200 ${
         collapsed ? "w-16" : "w-56"
       }`}
     >
       {/* Brand Header */}
-      <div className="h-14 border-b border-slate-800/80 px-4 flex items-center justify-between shrink-0 bg-slate-950/40">
+      <div className="h-12 border-b border-slate-800 px-3.5 flex items-center justify-between shrink-0 bg-slate-900/90">
         <div className="flex items-center gap-2.5 overflow-hidden">
-          <div className="h-8 w-8 rounded-lg bg-cyan-500/10 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shrink-0">
+          <div className="h-7 w-7 rounded-lg bg-cyan-600/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
             <Compass className="h-4 w-4" />
           </div>
           {!collapsed && (
             <div className="min-w-0">
-              <span className="text-xs font-bold font-mono tracking-wider text-white block truncate">
-                AI ARCHITECT
+              <span className="text-xs font-bold tracking-tight text-white block truncate">
+                HomeAI Designer
               </span>
-              <span className="text-[9px] text-cyan-400 font-mono tracking-widest block uppercase">
-                BIM STUDIO
+              <span className="text-[10px] text-slate-400 font-medium block truncate">
+                Architectural Studio
               </span>
             </div>
           )}
@@ -184,7 +194,7 @@ export function ArchitecturalNavSidebar({
         <button
           type="button"
           onClick={() => setCollapsed(!collapsed)}
-          className="p-1 rounded-md text-slate-500 hover:text-slate-300 hover:bg-slate-900 transition-colors cursor-pointer"
+          className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
           title={collapsed ? "Expand Sidebar" : "Collapse Sidebar"}
         >
           {collapsed ? (
@@ -196,7 +206,7 @@ export function ArchitecturalNavSidebar({
       </div>
 
       {/* Nav Items List */}
-      <div className="flex-1 overflow-y-auto py-3 px-2 space-y-1 scrollbar-none">
+      <div className="flex-1 overflow-y-auto py-2.5 px-2 space-y-1 scrollbar-none">
         {navItems.map((item) => {
           if (item.type === "link") {
             const isCurrentPage = pathname === item.href;
@@ -204,10 +214,10 @@ export function ArchitecturalNavSidebar({
               <Link
                 key={item.id}
                 href={item.href}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition-colors group ${
+                className={`flex items-center gap-3 px-3 py-2 rounded-xl text-xs transition-colors group ${
                   isCurrentPage
-                    ? "bg-slate-900 text-white font-bold border border-slate-800"
-                    : "text-slate-400 hover:text-white hover:bg-slate-900/60"
+                    ? "bg-slate-800 text-white font-medium border border-slate-700/60"
+                    : "text-slate-400 hover:text-white hover:bg-slate-800/50"
                 }`}
                 title={collapsed ? item.label : undefined}
               >
@@ -224,10 +234,10 @@ export function ArchitecturalNavSidebar({
               key={item.id}
               type="button"
               onClick={item.onClick}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition-colors cursor-pointer group text-left ${
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs transition-colors cursor-pointer group text-left ${
                 item.active
-                  ? "bg-cyan-950/80 border border-cyan-500/70 text-cyan-300 font-bold shadow-xs shadow-cyan-950/50"
-                  : "text-slate-400 hover:text-white hover:bg-slate-900/60"
+                  ? "bg-cyan-950/70 border border-cyan-500/60 text-cyan-300 font-semibold shadow-xs"
+                  : "text-slate-400 hover:text-white hover:bg-slate-800/50"
               }`}
               title={collapsed ? item.label : undefined}
             >
@@ -245,14 +255,13 @@ export function ArchitecturalNavSidebar({
       </div>
 
       {/* Footer Settings Area */}
-      <div className="p-2 border-t border-slate-800/80 bg-slate-950/30 shrink-0">
+      <div className="p-2 border-t border-slate-800 bg-slate-900/50 shrink-0">
         <button
           type="button"
           onClick={() => {
-            // Quick preferences toggle
             alert("HomeAI Studio Preferences: Units (Metric/mm), Snap (Grid & Endpoints active), NBC 2024 compliance verified.");
           }}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs text-slate-400 hover:text-white hover:bg-slate-900/60 transition-colors cursor-pointer"
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs text-slate-400 hover:text-white hover:bg-slate-800/50 transition-colors cursor-pointer"
           title={collapsed ? "Settings" : undefined}
         >
           <Settings className="h-4 w-4 shrink-0 text-slate-400 hover:text-cyan-400" />

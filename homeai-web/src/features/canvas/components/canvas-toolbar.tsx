@@ -37,7 +37,9 @@ import {
   Droplets,
   Wind,
   Calculator,
-  FileText
+  FileText,
+  AlertTriangle,
+  AlertCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { fitToContent } from '@/core/canvas/transform';
@@ -76,10 +78,10 @@ export function CanvasToolbar() {
     toggleMEPPlumbing,
     showMEPHVAC,
     toggleMEPHVAC,
-    leftSidebarOpen,
-    toggleLeftSidebar,
-    aiAdvisorOpen,
-    toggleAIAdvisor
+    activeDrawer,
+    toggleDrawer,
+    blueprintDockOpen,
+    toggleBlueprintDock,
   } = useCanvasStore();
 
   const { 
@@ -90,6 +92,11 @@ export function CanvasToolbar() {
     future, 
     saveProject, 
     isSaving,
+    saveStatus,
+    saveError,
+    storageWarning,
+    retrySave,
+    backupCurrentProject,
     importProject
   } = useProjectStore();
 
@@ -199,13 +206,13 @@ export function CanvasToolbar() {
       {/* LEFT: Sidebar Toggle, Project Brand & Saved Indicator */}
       <div className="flex items-center gap-2 shrink-0">
         <button
-          onClick={toggleLeftSidebar}
+          onClick={() => toggleDrawer('properties')}
           className={`h-8 w-8 flex items-center justify-center rounded-lg border transition-colors cursor-pointer ${
-            leftSidebarOpen 
+            activeDrawer === 'properties' 
               ? 'bg-indigo-50 border-indigo-200 text-indigo-700' 
               : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
           }`}
-          title={leftSidebarOpen ? "Collapse Left Sidebar (CAD Tools & Properties)" : "Open Left Sidebar"}
+          title={activeDrawer === 'properties' ? "Collapse CAD Tools & Properties" : "Open CAD Tools & Properties"}
         >
           <PanelLeft className="h-4 w-4" />
         </button>
@@ -227,17 +234,67 @@ export function CanvasToolbar() {
         </Link>
 
         {/* Persistence Status Badge */}
-        <div className="hidden sm:flex items-center text-[11px] text-slate-500 whitespace-nowrap">
-          {isSaving ? (
-            <span className="flex items-center text-amber-600 font-medium gap-1">
+        <div className="hidden sm:flex items-center text-[11px] text-slate-500 whitespace-nowrap gap-1.5" data-testid="persistence-status-container">
+          {saveStatus === 'saving' || isSaving ? (
+            <span className="flex items-center text-amber-600 font-medium gap-1" data-testid="save-status-saving">
               <RotateCcw className="h-3 w-3 animate-spin" /> Saving...
             </span>
+          ) : saveStatus === 'quota_exceeded' ? (
+            <div className="flex items-center gap-1.5" data-testid="save-status-quota">
+              <span className="flex items-center text-rose-600 font-bold gap-1 text-[11px]" title={saveError || "Browser storage quota exceeded."}>
+                <AlertTriangle className="h-3.5 w-3.5 text-rose-600 shrink-0" /> Storage Full
+              </span>
+              <button
+                onClick={backupCurrentProject}
+                className="px-2 py-0.5 text-[10px] font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded transition-colors shadow-xs cursor-pointer"
+                title="Download complete JSON backup directly without touching storage"
+                data-testid="backup-now-button"
+              >
+                Backup JSON
+              </button>
+            </div>
+          ) : saveStatus === 'error' ? (
+            <div className="flex items-center gap-1.5" data-testid="save-status-error">
+              <span className="flex items-center text-rose-500 font-medium gap-1 text-[11px]" title={saveError || "Save failed"}>
+                <AlertCircle className="h-3.5 w-3.5 text-rose-500 shrink-0" /> Save Failed
+              </span>
+              <button
+                onClick={retrySave}
+                className="px-2 py-0.5 text-[10px] font-medium bg-slate-200 hover:bg-slate-300 text-slate-800 rounded transition-colors cursor-pointer"
+                title="Retry saving"
+                data-testid="retry-save-button"
+              >
+                Retry
+              </button>
+            </div>
           ) : isModified ? (
-            <span className="text-amber-500 font-medium">● Unsaved</span>
+            <div className="flex items-center gap-1">
+              <span className="text-amber-500 font-medium" data-testid="save-status-unsaved">● Unsaved</span>
+              {storageWarning && (
+                <span
+                  className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-1 py-0.5 rounded font-medium cursor-help"
+                  title={storageWarning}
+                  data-testid="storage-warning-badge"
+                >
+                  Storage 80%+
+                </span>
+              )}
+            </div>
           ) : (
-            <span className="flex items-center text-emerald-600 gap-1 font-medium">
-              <CheckCircle2 className="h-3 w-3" /> Saved
-            </span>
+            <div className="flex items-center gap-1">
+              <span className="flex items-center text-emerald-600 gap-1 font-medium" data-testid="save-status-saved">
+                <CheckCircle2 className="h-3 w-3" /> Saved
+              </span>
+              {storageWarning && (
+                <span
+                  className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-1 py-0.5 rounded font-medium cursor-help"
+                  title={storageWarning}
+                  data-testid="storage-warning-badge"
+                >
+                  Storage 80%+
+                </span>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -279,14 +336,21 @@ export function CanvasToolbar() {
             <button
               key={t.id}
               onClick={() => setTool(t.id)}
-              className={`h-8 w-8 rounded-md flex items-center justify-center text-xs transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+              className={`h-8 w-8 relative rounded-md flex items-center justify-center text-xs transition-all whitespace-nowrap shrink-0 cursor-pointer group ${
                 tool === t.id 
                   ? 'bg-white shadow-xs text-indigo-600 font-semibold' 
                   : 'text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
               }`}
               title={`${t.label} (Press ${t.shortcut})`}
+              data-testid={`cad-tool-${t.id}`}
             >
               <span className={tool === t.id ? 'text-indigo-600' : 'text-slate-600'}>{t.icon}</span>
+              <span
+                data-testid={`shortcut-badge-${t.id}`}
+                className="absolute bottom-0.5 right-0.5 text-[8px] font-mono leading-none text-slate-400 group-hover:text-slate-700 select-none pointer-events-none"
+              >
+                {t.shortcut}
+              </span>
             </button>
           ))}
         </div>
@@ -346,6 +410,19 @@ export function CanvasToolbar() {
           >
             <Layers className="h-3 w-3" />
             <span>Underlay</span>
+          </button>
+
+          <button
+            onClick={toggleBlueprintDock}
+            className={`h-8 px-2 rounded-md text-[11px] flex items-center gap-1 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              blueprintDockOpen
+                ? 'bg-cyan-100 text-cyan-900 font-semibold shadow-xs'
+                : 'text-slate-600 hover:bg-slate-200/60'
+            }`}
+            title="Import and Calibrate Blueprint Reference Floor Plan (PNG, JPG, PDF)"
+          >
+            <FileText className="h-3 w-3 text-cyan-600" />
+            <span>Blueprint</span>
           </button>
 
           <div className="h-4 w-px bg-slate-200 mx-0.5" />
@@ -558,13 +635,13 @@ export function CanvasToolbar() {
 
         {/* AI Co-Pilot Toggle Button */}
         <button
-          onClick={toggleAIAdvisor}
+          onClick={() => toggleDrawer('ai')}
           className={`h-8 px-2.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all cursor-pointer ${
-            aiAdvisorOpen 
+            activeDrawer === 'ai' 
               ? 'bg-indigo-600 text-white shadow-xs' 
               : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'
           }`}
-          title={aiAdvisorOpen ? "Collapse AI Architect Co-Pilot" : "Open AI Architect Co-Pilot"}
+          title={activeDrawer === 'ai' ? "Collapse AI Architect Co-Pilot" : "Open AI Architect Co-Pilot"}
         >
           <Sparkles className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">AI Co-Pilot</span>

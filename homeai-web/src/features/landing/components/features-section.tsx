@@ -19,9 +19,9 @@ export function FeaturesSection() {
         {/* Technical Section Header */}
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 border-b border-slate-800 pb-8">
           <div>
-            <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-cyan-400">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-cyan-400">
               <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
-              CAD KERNEL SPECIFICATIONS
+              Comprehensive Architectural Features
             </div>
             <h2 className="mt-3 text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
               Built for architectural logic, not speculative images.
@@ -39,11 +39,11 @@ export function FeaturesSection() {
           <div className="md:col-span-2 rounded-xl bg-slate-950/80 border border-slate-800 p-8 flex flex-col justify-between relative overflow-hidden group hover:border-slate-700 transition-colors">
             <div className="relative z-10">
               <div className="flex items-center justify-between">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800 text-[11px] font-mono text-cyan-300">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800 text-xs font-medium text-cyan-300">
                   <Layers3 className="h-3.5 w-3.5 text-cyan-400" />
-                  PARAMETRIC DUPLEX CORE
+                  Multi-Floor Duplex Design
                 </span>
-                <span className="text-[11px] font-mono text-slate-500">LEVEL STACKING v2</span>
+                <span className="text-xs text-slate-400 font-medium">Vertical Stacking</span>
               </div>
               <h3 className="mt-4 text-xl font-bold text-white">
                 Multi-Level Vertical Coordination with Void Mezzanines

@@ -32,7 +32,8 @@ export function PropertiesPanel() {
     selectSubElement,
     tool,
     setTool,
-    setLeftSidebarOpen 
+    activeDrawer,
+    closeDrawer
   } = useCanvasStore();
   const { 
     currentProject, 
@@ -88,7 +89,7 @@ export function PropertiesPanel() {
     },
   ];
 
-  if (!currentProject) return null;
+  if (activeDrawer !== 'properties' || !currentProject) return null;
 
   const floor = currentProject.floors.find((f) => f.id === currentProject.activeFloorId);
   if (!floor) return null;
@@ -145,7 +146,7 @@ export function PropertiesPanel() {
       <div className="h-10 px-3 border-b bg-slate-50 flex items-center justify-between shrink-0">
         <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">CAD Workspace</span>
         <button
-          onClick={() => setLeftSidebarOpen(false)}
+          onClick={() => closeDrawer()}
           className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
           title="Collapse Left Sidebar"
         >

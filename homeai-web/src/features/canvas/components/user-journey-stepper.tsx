@@ -83,8 +83,7 @@ export function UserJourneyStepper({
     setViewMode, 
     activeStage, 
     setActiveStage,
-    setCatalogDockOpen,
-    setMaterialsDockOpen,
+    setActiveDrawer,
     setWalkthroughActive
   } = useCanvasStore();
 
@@ -111,8 +110,7 @@ export function UserJourneyStepper({
       case 5:
         setViewMode("3d");
         setWalkthroughActive(false);
-        setCatalogDockOpen(true);
-        setMaterialsDockOpen(true);
+        setActiveDrawer("catalog");
         break;
       case 6:
         setViewMode("3d");
@@ -133,7 +131,7 @@ export function UserJourneyStepper({
   })();
 
   return (
-    <div className="w-full bg-[#0a0f1d] border-b border-slate-800/80 px-4 py-2 shrink-0 select-none overflow-x-auto font-mono scrollbar-none shadow-md">
+    <div className="w-full bg-slate-900 border-b border-slate-800 px-4 py-1.5 shrink-0 select-none overflow-x-auto scrollbar-none shadow-xs">
       <div className="flex items-center justify-between min-w-[920px] max-w-7xl mx-auto gap-1">
         {JOURNEY_STEPS.map((step, idx) => {
           const isActive = effectiveStage === step.id;
@@ -144,22 +142,22 @@ export function UserJourneyStepper({
               <button
                 type="button"
                 onClick={() => handleStepClick(step.id)}
-                className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-left transition-all cursor-pointer group ${
+                className={`flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-left transition-all cursor-pointer group ${
                   isActive
-                    ? "bg-cyan-950/80 border border-cyan-500/80 text-cyan-300 shadow-sm shadow-cyan-950/50"
+                    ? "bg-cyan-950/70 border border-cyan-500/70 text-cyan-300 shadow-xs"
                     : isPassed
-                    ? "bg-slate-900/50 hover:bg-slate-800/70 border border-slate-800 text-slate-300"
-                    : "hover:bg-slate-900/40 text-slate-500 border border-transparent"
+                    ? "bg-slate-850 hover:bg-slate-800 border border-slate-750 text-slate-300"
+                    : "hover:bg-slate-800/50 text-slate-400 border border-transparent"
                 }`}
               >
                 {/* Step Number Badge */}
                 <div
                   className={`h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-colors ${
                     isActive
-                      ? "bg-cyan-400 text-slate-950 shadow-xs shadow-cyan-400/50"
+                      ? "bg-cyan-500 text-slate-950 shadow-xs"
                       : isPassed
                       ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
-                      : "bg-slate-800 text-slate-500 group-hover:text-slate-300"
+                      : "bg-slate-800 text-slate-400 group-hover:text-slate-200"
                   }`}
                 >
                   {isPassed ? "✓" : step.id}
@@ -168,17 +166,17 @@ export function UserJourneyStepper({
                 {/* Title & Microcopy */}
                 <div className="min-w-0 pr-1">
                   <div
-                    className={`text-[11px] font-bold tracking-tight truncate leading-tight ${
+                    className={`text-xs font-semibold tracking-tight truncate leading-tight ${
                       isActive
                         ? "text-white"
                         : isPassed
                         ? "text-slate-200"
-                        : "text-slate-400 group-hover:text-slate-300"
+                        : "text-slate-400 group-hover:text-slate-200"
                     }`}
                   >
                     {step.title}
                   </div>
-                  <div className="text-[9px] text-slate-400 truncate hidden xl:block max-w-[140px] leading-tight mt-0.5">
+                  <div className="text-[10px] text-slate-400 truncate hidden xl:block max-w-[140px] leading-tight mt-0.5">
                     {step.tagline}
                   </div>
                 </div>

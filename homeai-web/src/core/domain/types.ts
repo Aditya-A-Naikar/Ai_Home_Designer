@@ -323,6 +323,32 @@ export interface Floor {
   electricalPoints?: ElectricalPoint[];
   plumbingFixtures?: PlumbingFixture[];
   hvacPoints?: HVACPoint[];
+  blueprintUnderlay?: BlueprintUnderlay;
+}
+
+export interface BlueprintCalibration {
+  point1Px: Point2D;
+  point2Px: Point2D;
+  pixelDistance: number;
+  realDistanceMm: number;
+  calibratedAt: string; // ISO 8601
+}
+
+export interface BlueprintUnderlay {
+  id: string;
+  floorId: string;
+  fileName: string;
+  fileType: string;
+  fileSizeBytes: number;
+  imageUrl: string; // Object URL or asset URI
+  imageWidth: number; // original image pixel width
+  imageHeight: number; // original image pixel height
+  positionMm: Point2D; // top-left position in mm
+  mmPerPixel: number; // calibration scale factor (mm per image pixel)
+  rotationDeg: number; // rotation in degrees: 0, 90, 180, 270
+  opacity: number; // 0.0 to 1.0
+  visible: boolean;
+  calibration?: BlueprintCalibration;
 }
 
 export interface DuplexConfig {

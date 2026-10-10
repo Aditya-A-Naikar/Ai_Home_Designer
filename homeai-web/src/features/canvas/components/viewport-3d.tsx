@@ -14,7 +14,11 @@ import {
   Compass,
   Sparkles,
   Footprints,
-  Camera
+  Camera,
+  X,
+  Focus,
+  ZoomIn,
+  ZoomOut
 } from 'lucide-react';
 import { 
   calculateSolarPosition, 
@@ -26,11 +30,20 @@ import {
   FloorFinishType, 
   WallFinishType,
   getFloorPBRTextures,
-  getWallPBRTextures 
+  getWallPBRTextures,
+  applyWorldScaleUVsToBoxGeometry,
+  disposePBRMaterialCache
 } from '@/core/geometry/pbr-materials';
 import { Door, Window, Staircase } from '@/core/domain/types';
 import { isPointInPolygon } from '@/core/geometry/room-utils';
+import { computeWallFootprints, getWallTrimOffsets } from '@/core/geometry/wall-utils';
 import { createProp3DMesh } from '@/core/geometry/furniture-3d';
+import { 
+  calculate3DPlacement, 
+  Placement3DResult,
+  threeWorldToProjectMm,
+  projectMmToThreeWorld
+} from '@/core/geometry/placement-3d';
 import { WalkthroughController } from '@/core/geometry/walkthrough-controller';
 import { AIRenderStudioModal } from './ai-render-studio-modal';
 import { Viewport3DCustomizer, Selected3DEntity } from './viewport-3d-customizer';
@@ -41,13 +54,54 @@ import { v4 as uuidv4 } from 'uuid';
 export function Viewport3D() {
   const containerRef = useRef<HTMLDivElement>(null);
   const { currentProject, addProp, deleteProp, updatePropCustomization } = useProjectStore();
-  const { setViewMode, selectSubElement, walkthroughActive, setWalkthroughActive } = useCanvasStore();
+  const { 
+    setViewMode, 
+    selectSubElement, 
+    walkthroughActive, 
+    setWalkthroughActive,
+    activePlacementPreset,
+    setActivePlacementPreset,
+    placementRotation,
+    rotatePlacement,
+  } = useCanvasStore();
 
   const [selected3DEntity, setSelected3DEntity] = useState<Selected3DEntity | null>(null);
 
   const [selectedFloorFilter, setSelectedFloorFilter] = useState<'all' | string>('all');
   const [cutawayMode, setCutawayMode] = useState<boolean>(true); // default cutaway at 1.2m
-  const [cameraPreset, setCameraPreset] = useState<'iso' | 'top' | 'front'>('iso');
+  const [cameraPreset, setCameraPreset] = useState<'iso' | 'top' | 'front' | 'side'>('iso');
+
+  // 3D Placement active hover state refs & callbacks
+  const activePlacementStateRef = useRef<{
+    preset: typeof PROP_PRESETS[string];
+    activeFloorId: string;
+    placement: Placement3DResult;
+  } | null>(null);
+
+  const activePlacementPresetRef = useRef(activePlacementPreset);
+  const placementRotationRef = useRef(placementRotation);
+  const placementPreviewGroupRef = useRef<THREE.Group | null>(null);
+  const lastMouseIntersectionRef = useRef<THREE.Vector3 | null>(null);
+  const updatePlacementPreviewRef = useRef<((pt: THREE.Vector3) => void) | null>(null);
+
+  useEffect(() => {
+    placementRotationRef.current = placementRotation;
+    if (lastMouseIntersectionRef.current && updatePlacementPreviewRef.current) {
+      updatePlacementPreviewRef.current(lastMouseIntersectionRef.current);
+    }
+  }, [placementRotation]);
+
+  useEffect(() => {
+    activePlacementPresetRef.current = activePlacementPreset;
+    if (!activePlacementPreset) {
+      activePlacementStateRef.current = null;
+      if (placementPreviewGroupRef.current) {
+        placementPreviewGroupRef.current.visible = false;
+      }
+    } else if (lastMouseIntersectionRef.current && updatePlacementPreviewRef.current) {
+      updatePlacementPreviewRef.current(lastMouseIntersectionRef.current);
+    }
+  }, [activePlacementPreset]);
 
   // Phase 9: Solar Daylighting & PBR Material State
   const [timeOfDay, setTimeOfDay] = useState<number>(10.5); // 10:30 AM
@@ -70,6 +124,21 @@ export function Viewport3D() {
 
   const controlsRef = useRef<OrbitControls | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraTransitionRef = useRef<{
+    startTime: number;
+    duration: number;
+    startPos: THREE.Vector3;
+    endPos: THREE.Vector3;
+    startTarget: THREE.Vector3;
+    endTarget: THREE.Vector3;
+    onComplete?: () => void;
+  } | null>(null);
+
+  const handleCameraPresetRef = useRef<((preset: 'iso' | 'top' | 'front' | 'side') => void) | null>(null);
+  const handleFocusSelectionRef = useRef<(() => void) | null>(null);
+  const handleDollyRef = useRef<((factor: number) => void) | null>(null);
+  const handleOrbitAzimuthRef = useRef<((angleRad: number) => void) | null>(null);
 
   // Compute building bounding box center (in meters)
   const centerOffset = useMemo(() => {
@@ -114,6 +183,7 @@ export function Viewport3D() {
     // 1. Scene
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xf8fafc); // Slate-50 studio background
+    sceneRef.current = scene;
 
     // 2. Camera
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
@@ -135,7 +205,14 @@ export function Viewport3D() {
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
+    controls.minDistance = 1.0;
+    controls.maxDistance = 80.0;
     controls.maxPolarAngle = Math.PI / 2 - 0.02; // Restrict going below ground
+    controls.minPolarAngle = 0.02; // Prevent gimbal lock at exact top pole
+    controls.screenSpacePanning = true; // CAD screen space panning
+    controls.panSpeed = 1.0;
+    controls.rotateSpeed = 0.8;
+    controls.zoomSpeed = 1.2;
     controls.target.set(0, 1.5, 0);
     controlsRef.current = controls;
 
@@ -194,6 +271,105 @@ export function Viewport3D() {
     const gridHelper = new THREE.GridHelper(60, 60, 0x94a3b8, 0xe2e8f0);
     gridHelper.position.y = 0;
     scene.add(gridHelper);
+
+    // 6b. Active 3D Placement Preview Ghost Mesh & Coordinator
+    const placementPreviewGroup = new THREE.Group();
+    placementPreviewGroup.name = '__placementPreviewGroup';
+    placementPreviewGroup.visible = false;
+    scene.add(placementPreviewGroup);
+    placementPreviewGroupRef.current = placementPreviewGroup;
+
+    const updatePreviewMesh = (
+      preset: typeof PROP_PRESETS[string],
+      isValid: boolean,
+      isSnapped: boolean
+    ) => {
+      while (placementPreviewGroup.children.length > 0) {
+        const child = placementPreviewGroup.children[0];
+        placementPreviewGroup.remove(child);
+        if ((child as THREE.Mesh).geometry) {
+          (child as THREE.Mesh).geometry.dispose();
+        }
+      }
+
+      const wM = (preset.dimensions.width || 1000) / 1000;
+      const dM = (preset.dimensions.depth || 1000) / 1000;
+      const hM = (preset.dimensions.height || 800) / 1000;
+
+      const color = isValid ? (isSnapped ? 0x06b6d4 : 0x10b981) : 0xf43f5e;
+      const edgeColor = isValid ? (isSnapped ? 0x0891b2 : 0x059669) : 0xbe123c;
+
+      const boxGeo = new THREE.BoxGeometry(wM, hM, dM);
+      const boxMat = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.45,
+        depthWrite: false,
+      });
+      const boxMesh = new THREE.Mesh(boxGeo, boxMat);
+      boxMesh.position.set(0, hM / 2, 0);
+      placementPreviewGroup.add(boxMesh);
+
+      const edgesGeo = new THREE.EdgesGeometry(boxGeo);
+      const edgesMat = new THREE.LineBasicMaterial({
+        color: edgeColor,
+        linewidth: 2,
+      });
+      const edgesMesh = new THREE.LineSegments(edgesGeo, edgesMat);
+      edgesMesh.position.set(0, hM / 2, 0);
+      placementPreviewGroup.add(edgesMesh);
+
+      // Orientation marker pointing into room (+Z in Three.js local space)
+      const arrowDir = new THREE.Vector3(0, 0, 1);
+      const arrowOrigin = new THREE.Vector3(0, 0.05, dM / 2);
+      const arrowHelper = new THREE.ArrowHelper(arrowDir, arrowOrigin, 0.35, edgeColor, 0.12, 0.08);
+      placementPreviewGroup.add(arrowHelper);
+    };
+
+    updatePlacementPreviewRef.current = (intersection: THREE.Vector3) => {
+      if (!activePlacementPresetRef.current) return;
+      const preset = PROP_PRESETS[activePlacementPresetRef.current];
+      if (!preset) return;
+
+      const activeFloor = currentProject.floors.find(f => 
+        selectedFloorFilter === 'all' ? f.id === currentProject.activeFloorId : f.id === selectedFloorFilter
+      ) || currentProject.floors[0];
+      if (!activeFloor) return;
+
+      const cursorMm = threeWorldToProjectMm(
+        { x: intersection.x, z: intersection.z },
+        centerOffset
+      );
+
+      const placement = calculate3DPlacement(
+        cursorMm,
+        preset,
+        activeFloor.walls,
+        activeFloor.rooms,
+        {
+          manualRotationDeg: placementRotationRef.current,
+          snapToleranceMm: 350,
+          wallClearanceMm: 10,
+        }
+      );
+
+      activePlacementStateRef.current = {
+        preset,
+        activeFloorId: activeFloor.id,
+        placement,
+      };
+
+      updatePreviewMesh(preset, placement.isValid, placement.isSnappedToWall);
+      const worldPos = projectMmToThreeWorld(placement.positionMm, centerOffset);
+      const floorElevM = (activeFloor.elevation || 0) / 1000;
+      placementPreviewGroup.position.set(
+        worldPos.x,
+        floorElevM + (placement.elevationOffsetMm / 1000),
+        worldPos.z
+      );
+      placementPreviewGroup.rotation.y = -(placement.rotationDeg * Math.PI) / 180;
+      placementPreviewGroup.visible = true;
+    };
 
     // 7. PBR Architectural Materials
     const activeWallSpec = WALL_FINISHES[wallFinish];
@@ -513,6 +689,66 @@ export function Viewport3D() {
         stringer.position.set(flightWM + 0.05, totalHeightM / 2, stairLengthM / 2);
         group.add(stringer);
 
+      } else if (stairType === "cantilever") {
+        // Floating Cantilevered Treads anchored into structural wall
+        const riserH = totalHeightM / steps;
+        const treadL = stairLengthM / steps;
+
+        for (let i = 0; i < steps; i++) {
+          const stepY = i * riserH;
+          const stepZ = stairLengthM - (i + 1) * treadL;
+
+          // Thick cantilever floating tread (80mm solid timber)
+          const treadMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(stairWidthM, 0.08, treadL + 0.02),
+            woodTreadMat
+          );
+          treadMesh.position.set(stairWidthM / 2, stepY + riserH, stepZ + treadL / 2);
+          treadMesh.castShadow = true;
+          treadMesh.receiveShadow = true;
+          group.add(treadMesh);
+        }
+
+        // Floating glass balustrade along open edge
+        const slopeLen = Math.hypot(stairLengthM, totalHeightM);
+        const slopeAngle = Math.atan2(totalHeightM, stairLengthM);
+        const railX = stairWidthM - 0.02;
+        const glassMesh = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.9, slopeLen), glassMat);
+        glassMesh.position.set(railX, totalHeightM / 2 + 0.45, stairLengthM / 2);
+        glassMesh.rotation.x = slopeAngle;
+        group.add(glassMesh);
+
+        const railMesh = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, slopeLen), frameMat);
+        railMesh.position.set(railX, totalHeightM / 2 + 0.92, stairLengthM / 2);
+        railMesh.rotation.x = slopeAngle;
+        group.add(railMesh);
+
+      } else if (stairType === "spiral") {
+        // Spiral / Helical Staircase with center steel column and radial fan steps
+        const radius = Math.min(stairWidthM, stairLengthM) / 2;
+        const poleRadius = 0.1;
+        const poleGeo = new THREE.CylinderGeometry(poleRadius, poleRadius, totalHeightM, 16);
+        const poleMesh = new THREE.Mesh(poleGeo, frameMat);
+        poleMesh.position.set(radius, totalHeightM / 2, radius);
+        group.add(poleMesh);
+
+        const anglePerStep = (Math.PI * 1.5) / steps;
+        for (let i = 0; i < steps; i++) {
+          const stepY = (i * totalHeightM) / steps;
+          const angle = i * anglePerStep;
+          const stepLen = radius - poleRadius;
+          const treadGeo = new THREE.BoxGeometry(stepLen, 0.04, 0.25);
+          const treadMesh = new THREE.Mesh(treadGeo, woodTreadMat);
+          treadMesh.position.set(
+            radius + Math.cos(angle) * (poleRadius + stepLen / 2),
+            stepY,
+            radius + Math.sin(angle) * (poleRadius + stepLen / 2)
+          );
+          treadMesh.rotation.y = -angle;
+          treadMesh.castShadow = true;
+          group.add(treadMesh);
+        }
+
       } else {
         // Straight Flight
         const riserH = totalHeightM / steps;
@@ -560,9 +796,6 @@ export function Viewport3D() {
       return group;
     }
 
-    // Determine wall height based on cutaway mode
-    const defaultWallHeight = cutawayMode ? 1.2 : 2.8;
-
     // Filter floors based on selector
     const floorsToRender = currentProject.floors.filter(f => {
       if (selectedFloorFilter === 'all') return true;
@@ -572,7 +805,7 @@ export function Viewport3D() {
     // 8. BUILD 3D GEOMETRY FOR EACH FLOOR
     floorsToRender.forEach((floor) => {
       const floorElevationM = (floor.elevation || 0) / 1000;
-      const wallHeightM = defaultWallHeight;
+      const wallHeightM = cutawayMode ? 1.2 : (floor.height && floor.height > 0 ? floor.height / 1000 : 2.8);
 
       // A. Rooms (PBR Floor Slabs with Through-Hole Punching for Stairs and Voids)
       floor.rooms.forEach((room) => {
@@ -587,9 +820,18 @@ export function Viewport3D() {
         });
 
         // Punch through-holes for staircases connecting from below
-        const lowerFloor = currentProject.floors.find(f => (f.elevation || 0) < (floor.elevation || 0));
+        const lowerFloors = currentProject.floors.filter(f => (f.elevation || 0) < (floor.elevation || 0));
+        const lowerFloor = lowerFloors.length > 0
+          ? lowerFloors.reduce((maxF, f) => (f.elevation || 0) > (maxF.elevation || 0) ? f : maxF, lowerFloors[0])
+          : null;
+
         if (lowerFloor?.stairs && lowerFloor.stairs.length > 0) {
           lowerFloor.stairs.forEach(st => {
+            // Avoid duplicate hole if floor.voids already has a void for this stair
+            if (floor.voids?.some(v => v.id === `stair-void-${st.id}`)) {
+              return;
+            }
+
             const anchorX = st.position.x / 1000 - centerOffset.x;
             const anchorZ = st.position.y / 1000 - centerOffset.z;
             const w = (st.width || 1000) / 1000;
@@ -623,18 +865,25 @@ export function Viewport3D() {
           });
         }
 
-        // Punch through-holes for explicit floor slab voids
+        // Punch through-holes for explicit floor slab voids (only for rooms containing/intersecting the void)
         floor.voids?.forEach(v => {
           if (v.polygon && v.polygon.length >= 3) {
-            const hole = new THREE.Path();
-            v.polygon.forEach((pt, idx) => {
-              const vx = pt.x / 1000 - centerOffset.x;
-              const vz = pt.y / 1000 - centerOffset.z;
-              if (idx === 0) hole.moveTo(vx, -vz);
-              else hole.lineTo(vx, -vz);
-            });
-            hole.closePath();
-            shape.holes.push(hole);
+            const voidCenterX = v.polygon.reduce((sum, p) => sum + p.x, 0) / v.polygon.length;
+            const voidCenterY = v.polygon.reduce((sum, p) => sum + p.y, 0) / v.polygon.length;
+            const isInsideRoom = isPointInPolygon({ x: voidCenterX, y: voidCenterY }, room.polygon) ||
+              v.polygon.some(pt => isPointInPolygon(pt, room.polygon));
+
+            if (isInsideRoom) {
+              const hole = new THREE.Path();
+              v.polygon.forEach((pt, idx) => {
+                const vx = pt.x / 1000 - centerOffset.x;
+                const vz = pt.y / 1000 - centerOffset.z;
+                if (idx === 0) hole.moveTo(vx, -vz);
+                else hole.lineTo(vx, -vz);
+              });
+              hole.closePath();
+              shape.holes.push(hole);
+            }
           }
         });
 
@@ -647,6 +896,8 @@ export function Viewport3D() {
           roughness: roomFinSpec.roughness,
           metalness: roomFinSpec.metalness,
           map: roomFinTextures.map || null,
+          normalMap: roomFinTextures.normalMap || null,
+          normalScale: roomFinTextures.normalScale || (roomFinSpec.normalScale ? new THREE.Vector2(roomFinSpec.normalScale, roomFinSpec.normalScale) : undefined),
           roughnessMap: roomFinTextures.roughnessMap || null,
           bumpMap: roomFinTextures.bumpMap || null,
           bumpScale: roomFinTextures.bumpScale || 0.004,
@@ -656,6 +907,17 @@ export function Viewport3D() {
           depth: 0.12,
           bevelEnabled: false,
         });
+
+        // World-scale physical metric UV mapping for floor slabs
+        const slabUvAttr = slabGeo.getAttribute('uv') as THREE.BufferAttribute;
+        if (slabUvAttr) {
+          const posAttr = slabGeo.getAttribute('position') as THREE.BufferAttribute;
+          const s = Math.max(0.1, roomFinSpec.uvScaleMeters || 1.0);
+          for (let i = 0; i < slabUvAttr.count; i++) {
+            slabUvAttr.setXY(i, posAttr.getX(i) / s, posAttr.getY(i) / s);
+          }
+          slabUvAttr.needsUpdate = true;
+        }
 
         const slabMesh = new THREE.Mesh(slabGeo, slabMat);
         slabMesh.rotation.x = -Math.PI / 2;
@@ -771,8 +1033,15 @@ export function Viewport3D() {
         scene.add(colMesh);
       });
 
-      // C. Walls with Detailed Openings & Baseboards
+      // C. Walls with Detailed Openings, Baseboards & Parametric Join Offsets
+      const wallFootprints = computeWallFootprints(floor.walls);
+
       floor.walls.forEach((wall) => {
+        const footprint = wallFootprints.get(wall.id);
+        const { startTrim, endTrim } = getWallTrimOffsets(wall, footprint);
+        const startTrimM = startTrim / 1000;
+        const endTrimM = endTrim / 1000;
+
         const sx = wall.start.x / 1000 - centerOffset.x;
         const sz = wall.start.y / 1000 - centerOffset.z;
         const ex = wall.end.x / 1000 - centerOffset.x;
@@ -797,6 +1066,8 @@ export function Viewport3D() {
           roughness: specificWallFinSpec.roughness,
           metalness: specificWallFinSpec.metalness,
           map: specificWallTextures.map || null,
+          normalMap: specificWallTextures.normalMap || null,
+          normalScale: specificWallTextures.normalScale || (specificWallFinSpec.normalScale ? new THREE.Vector2(specificWallFinSpec.normalScale, specificWallFinSpec.normalScale) : undefined),
           bumpMap: specificWallTextures.bumpMap || null,
           bumpScale: specificWallTextures.bumpScale || 0.003,
         });
@@ -850,64 +1121,88 @@ export function Viewport3D() {
         openings.sort((a, b) => a.startOffset - b.startOffset);
 
         if (openings.length === 0) {
-          // Solid Wall Segment
-          const solidGeo = new THREE.BoxGeometry(wallLengthM, wallHeightM, thicknessM);
+          // Solid Wall Segment with Parametric Butt/Trim Offsets & World-Scale UVs
+          const effLenM = Math.max(0.01, wallLengthM - startTrimM - endTrimM);
+          const solidGeo = applyWorldScaleUVsToBoxGeometry(
+            new THREE.BoxGeometry(effLenM, wallHeightM, thicknessM),
+            effLenM,
+            wallHeightM,
+            thicknessM,
+            specificWallFinSpec.uvScaleMeters || 1.0
+          );
           const solidMesh = new THREE.Mesh(solidGeo, wallMat);
-          solidMesh.position.set(wallLengthM / 2, wallHeightM / 2, 0);
+          solidMesh.position.set(startTrimM + effLenM / 2, wallHeightM / 2, 0);
           solidMesh.castShadow = true;
           solidMesh.receiveShadow = true;
           wallGroup.add(solidMesh);
 
           // Baseboard / Skirting Trim along floor
           const skirtMesh = new THREE.Mesh(
-            new THREE.BoxGeometry(wallLengthM, 0.08, thicknessM + 0.015),
+            new THREE.BoxGeometry(effLenM, 0.08, thicknessM + 0.015),
             skirtingMat
           );
-          skirtMesh.position.set(wallLengthM / 2, 0.04, 0);
+          skirtMesh.position.set(startTrimM + effLenM / 2, 0.04, 0);
           wallGroup.add(skirtMesh);
 
           // Top Wall Coping / Architectural Reveal
           const capMesh = new THREE.Mesh(
-            new THREE.BoxGeometry(wallLengthM, 0.03, thicknessM + 0.02),
+            new THREE.BoxGeometry(effLenM, 0.03, thicknessM + 0.02),
             wallCapMat
           );
-          capMesh.position.set(wallLengthM / 2, wallHeightM - 0.015, 0);
+          capMesh.position.set(startTrimM + effLenM / 2, wallHeightM - 0.015, 0);
           wallGroup.add(capMesh);
         } else {
-          // Segmented Wall with Punctures
-          let curX = 0;
+          // Segmented Wall with Punctures, Parametric Trims & World-Scale UVs
+          let curX = startTrimM;
+          const maxEnd = Math.max(curX, wallLengthM - endTrimM);
+
           openings.forEach(op => {
             if (op.startOffset > curX) {
-              const segLen = op.startOffset - curX;
-              const segGeo = new THREE.BoxGeometry(segLen, wallHeightM, thicknessM);
-              const segMesh = new THREE.Mesh(segGeo, wallMat);
-              segMesh.position.set(curX + segLen / 2, wallHeightM / 2, 0);
-              segMesh.castShadow = true;
-              segMesh.receiveShadow = true;
-              wallGroup.add(segMesh);
+              const segEnd = Math.min(op.startOffset, maxEnd);
+              const segLen = segEnd - curX;
+              if (segLen > 0.01) {
+                const segGeo = applyWorldScaleUVsToBoxGeometry(
+                  new THREE.BoxGeometry(segLen, wallHeightM, thicknessM),
+                  segLen,
+                  wallHeightM,
+                  thicknessM,
+                  specificWallFinSpec.uvScaleMeters || 1.0
+                );
+                const segMesh = new THREE.Mesh(segGeo, wallMat);
+                segMesh.position.set(curX + segLen / 2, wallHeightM / 2, 0);
+                segMesh.castShadow = true;
+                segMesh.receiveShadow = true;
+                wallGroup.add(segMesh);
 
-              // Skirting trim
-              const skirtMesh = new THREE.Mesh(
-                new THREE.BoxGeometry(segLen, 0.08, thicknessM + 0.015),
-                skirtingMat
-              );
-              skirtMesh.position.set(curX + segLen / 2, 0.04, 0);
-              wallGroup.add(skirtMesh);
+                // Skirting trim
+                const skirtMesh = new THREE.Mesh(
+                  new THREE.BoxGeometry(segLen, 0.08, thicknessM + 0.015),
+                  skirtingMat
+                );
+                skirtMesh.position.set(curX + segLen / 2, 0.04, 0);
+                wallGroup.add(skirtMesh);
 
-              // Top cap trim
-              const capMesh = new THREE.Mesh(
-                new THREE.BoxGeometry(segLen, 0.03, thicknessM + 0.02),
-                wallCapMat
-              );
-              capMesh.position.set(curX + segLen / 2, wallHeightM - 0.015, 0);
-              wallGroup.add(capMesh);
+                // Top cap trim
+                const capMesh = new THREE.Mesh(
+                  new THREE.BoxGeometry(segLen, 0.03, thicknessM + 0.02),
+                  wallCapMat
+                );
+                capMesh.position.set(curX + segLen / 2, wallHeightM - 0.015, 0);
+                wallGroup.add(capMesh);
+              }
             }
 
             if (op.type === 'window') {
-              // Sub-window sill wall
+              // Sub-window sill wall with world-scale UVs
               if (op.sillM > 0 && op.sillM < wallHeightM) {
                 const sillH = Math.min(op.sillM, wallHeightM);
-                const sillGeo = new THREE.BoxGeometry(op.widthM, sillH, thicknessM);
+                const sillGeo = applyWorldScaleUVsToBoxGeometry(
+                  new THREE.BoxGeometry(op.widthM, sillH, thicknessM),
+                  op.widthM,
+                  sillH,
+                  thicknessM,
+                  specificWallFinSpec.uvScaleMeters || 1.0
+                );
                 const sillMesh = new THREE.Mesh(sillGeo, wallMat);
                 sillMesh.position.set(op.startOffset + op.widthM / 2, sillH / 2, 0);
                 sillMesh.castShadow = true;
@@ -932,40 +1227,87 @@ export function Viewport3D() {
                   wallGroup.add(winAssembly);
                 }
               }
+
+              // Window Lintel / Header wall above window
+              const winTopM = op.sillM + op.heightM;
+              if (winTopM < wallHeightM) {
+                const headH = wallHeightM - winTopM;
+                if (headH > 0.05) {
+                  const headGeo = applyWorldScaleUVsToBoxGeometry(
+                    new THREE.BoxGeometry(op.widthM, headH, thicknessM),
+                    op.widthM,
+                    headH,
+                    thicknessM,
+                    specificWallFinSpec.uvScaleMeters || 1.0
+                  );
+                  const headMesh = new THREE.Mesh(headGeo, wallMat);
+                  headMesh.position.set(op.startOffset + op.widthM / 2, winTopM + headH / 2, 0);
+                  headMesh.castShadow = true;
+                  headMesh.receiveShadow = true;
+                  wallGroup.add(headMesh);
+                }
+              }
             } else if (op.type === 'door') {
               // Detailed Door Assembly
               const doorH = Math.min(op.heightM, wallHeightM);
               const doorAssembly = createDetailedDoor(op.widthM, doorH, thicknessM);
               doorAssembly.position.set(op.startOffset + op.widthM / 2, 0, 0);
               wallGroup.add(doorAssembly);
+
+              // Door Lintel / Header wall above door
+              if (doorH < wallHeightM) {
+                const headH = wallHeightM - doorH;
+                if (headH > 0.05) {
+                  const headGeo = applyWorldScaleUVsToBoxGeometry(
+                    new THREE.BoxGeometry(op.widthM, headH, thicknessM),
+                    op.widthM,
+                    headH,
+                    thicknessM,
+                    specificWallFinSpec.uvScaleMeters || 1.0
+                  );
+                  const headMesh = new THREE.Mesh(headGeo, wallMat);
+                  headMesh.position.set(op.startOffset + op.widthM / 2, doorH + headH / 2, 0);
+                  headMesh.castShadow = true;
+                  headMesh.receiveShadow = true;
+                  wallGroup.add(headMesh);
+                }
+              }
             }
 
-            curX = op.endOffset;
+            curX = Math.max(curX, op.endOffset);
           });
 
           // Remaining Wall Segment
-          if (curX < wallLengthM) {
-            const remLen = wallLengthM - curX;
-            const remGeo = new THREE.BoxGeometry(remLen, wallHeightM, thicknessM);
-            const remMesh = new THREE.Mesh(remGeo, wallMat);
-            remMesh.position.set(curX + remLen / 2, wallHeightM / 2, 0);
-            remMesh.castShadow = true;
-            remMesh.receiveShadow = true;
-            wallGroup.add(remMesh);
+          if (curX < maxEnd) {
+            const remLen = maxEnd - curX;
+            if (remLen > 0.01) {
+              const remGeo = applyWorldScaleUVsToBoxGeometry(
+                new THREE.BoxGeometry(remLen, wallHeightM, thicknessM),
+                remLen,
+                wallHeightM,
+                thicknessM,
+                specificWallFinSpec.uvScaleMeters || 1.0
+              );
+              const remMesh = new THREE.Mesh(remGeo, wallMat);
+              remMesh.position.set(curX + remLen / 2, wallHeightM / 2, 0);
+              remMesh.castShadow = true;
+              remMesh.receiveShadow = true;
+              wallGroup.add(remMesh);
 
-            const remSkirt = new THREE.Mesh(
-              new THREE.BoxGeometry(remLen, 0.08, thicknessM + 0.015),
-              skirtingMat
-            );
-            remSkirt.position.set(curX + remLen / 2, 0.04, 0);
-            wallGroup.add(remSkirt);
+              const remSkirt = new THREE.Mesh(
+                new THREE.BoxGeometry(remLen, 0.08, thicknessM + 0.015),
+                skirtingMat
+              );
+              remSkirt.position.set(curX + remLen / 2, 0.04, 0);
+              wallGroup.add(remSkirt);
 
-            const remCap = new THREE.Mesh(
-              new THREE.BoxGeometry(remLen, 0.03, thicknessM + 0.02),
-              wallCapMat
-            );
-            remCap.position.set(curX + remLen / 2, wallHeightM - 0.015, 0);
-            wallGroup.add(remCap);
+              const remCap = new THREE.Mesh(
+                new THREE.BoxGeometry(remLen, 0.03, thicknessM + 0.02),
+                wallCapMat
+              );
+              remCap.position.set(curX + remLen / 2, wallHeightM - 0.015, 0);
+              wallGroup.add(remCap);
+            }
           }
         }
 
@@ -1002,7 +1344,12 @@ export function Viewport3D() {
       floor.voids?.forEach((v) => {
         if (!v.polygon || v.polygon.length < 3) return;
 
+        const isStairVoid = v.id.startsWith('stair-void-');
+
         for (let i = 0; i < v.polygon.length; i++) {
+          // For stair openings, edge 0 is the arrival threshold onto the upper floor; skip balustrade so passage is open
+          if (isStairVoid && i === 0) continue;
+
           const p1 = v.polygon[i];
           const p2 = v.polygon[(i + 1) % v.polygon.length];
 
@@ -1216,6 +1563,20 @@ export function Viewport3D() {
           const room = wtController.getCurrentRoom(activeFloor.rooms, centerOffset, currentProject.floors);
           setCurrentRoomName((prev) => (prev !== room ? room : prev));
         }
+      } else if (cameraTransitionRef.current) {
+        const trans = cameraTransitionRef.current;
+        const progress = Math.min(1, (now - trans.startTime) / trans.duration);
+        // Smooth ease-in-out cubic interpolation
+        const ease = progress < 0.5
+          ? 4 * progress * progress * progress
+          : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+        camera.position.lerpVectors(trans.startPos, trans.endPos, ease);
+        controls.target.lerpVectors(trans.startTarget, trans.endTarget, ease);
+        controls.update();
+        if (progress >= 1) {
+          cameraTransitionRef.current = null;
+          trans.onComplete?.();
+        }
       } else {
         controls.update();
       }
@@ -1228,9 +1589,105 @@ export function Viewport3D() {
     const handleKeyDown = (e: KeyboardEvent) => {
       wtController.handleKeyDown(e.code);
 
-      // 3D Direct Manipulation Shortcuts (when not in an active text input)
-      const activeTag = (document.activeElement?.tagName || '').toLowerCase();
-      if (activeTag !== 'input' && activeTag !== 'textarea') {
+      // Active 3D Placement shortcuts
+      if (activePlacementPresetRef.current) {
+        if (e.key === 'r' || e.key === 'R') {
+          e.preventDefault();
+          const delta = e.shiftKey ? -90 : 90;
+          rotatePlacement(delta);
+          return;
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          setActivePlacementPreset(null);
+          activePlacementStateRef.current = null;
+          if (placementPreviewGroupRef.current) {
+            placementPreviewGroupRef.current.visible = false;
+          }
+          return;
+        }
+      }
+
+      if (walkthroughMode && e.key === 'Escape') {
+        e.preventDefault();
+        if (document.pointerLockElement) document.exitPointerLock?.();
+        setWalkthroughMode(false);
+        return;
+      }
+
+      // Check if user is typing in a text field
+      const activeEl = document.activeElement;
+      const isTextInput =
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+         activeEl.tagName === 'TEXTAREA' ||
+         activeEl.tagName === 'SELECT' ||
+         activeEl.hasAttribute('contenteditable'));
+
+      if (!isTextInput && !walkthroughMode) {
+        // Architectural Camera Navigation Shortcuts
+        if (e.key === 'f' || e.key === 'F') {
+          e.preventDefault();
+          handleFocusSelectionRef.current?.();
+          return;
+        }
+        if (e.key === 'h' || e.key === 'H' || e.key === 'Home') {
+          e.preventDefault();
+          handleCameraPresetRef.current?.('iso');
+          return;
+        }
+        if (e.key === '1') {
+          e.preventDefault();
+          handleCameraPresetRef.current?.('top');
+          return;
+        }
+        if (e.key === '2') {
+          e.preventDefault();
+          handleCameraPresetRef.current?.('front');
+          return;
+        }
+        if (e.key === '3') {
+          e.preventDefault();
+          handleCameraPresetRef.current?.('side');
+          return;
+        }
+        if (e.key === '4') {
+          e.preventDefault();
+          handleCameraPresetRef.current?.('iso');
+          return;
+        }
+        if (e.key === '+' || e.key === '=') {
+          e.preventDefault();
+          handleDollyRef.current?.(0.85);
+          return;
+        }
+        if (e.key === '-' || e.key === '_') {
+          e.preventDefault();
+          handleDollyRef.current?.(1.15);
+          return;
+        }
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          handleOrbitAzimuthRef.current?.(e.shiftKey ? 0.04 : 0.08);
+          return;
+        }
+        if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          handleOrbitAzimuthRef.current?.(e.shiftKey ? -0.04 : -0.08);
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          handleDollyRef.current?.(0.92);
+          return;
+        }
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          handleDollyRef.current?.(1.08);
+          return;
+        }
+
+        // 3D Direct Manipulation Shortcuts
         if (selected3DEntity && selected3DEntity.type === 'prop') {
           if (e.key === 'r' || e.key === 'R') {
             const newRot = ((selected3DEntity.rotation || 0) + 45) % 360;
@@ -1288,22 +1745,34 @@ export function Viewport3D() {
           const intersection = new THREE.Vector3();
 
           if (raycaster.ray.intersectPlane(floorPlane, intersection)) {
-            const worldX = Math.round((intersection.x + centerOffset.x) * 1000);
-            const worldY = Math.round((intersection.z + centerOffset.z) * 1000);
+            const cursorMm = threeWorldToProjectMm(
+              { x: intersection.x, z: intersection.z },
+              centerOffset
+            );
 
-            const hitRoom = activeFloor.rooms.find(r => isPointInPolygon({ x: worldX, y: worldY }, r.polygon));
+            const placement = calculate3DPlacement(
+              cursorMm,
+              preset,
+              activeFloor.walls,
+              activeFloor.rooms,
+              {
+                manualRotationDeg: placementRotationRef.current,
+                snapToleranceMm: 350,
+                wallClearanceMm: 10,
+              }
+            );
 
             const newPropId = uuidv4();
             const newProp: Prop = {
               id: newPropId,
               floorId: activeFloor.id,
-              roomId: hitRoom?.id,
+              roomId: placement.roomId,
               name: preset.name,
               category: preset.category,
               propType: preset.propType,
-              position: { x: worldX, y: worldY },
-              rotation: 0,
-              elevationOffsetMm: 0,
+              position: { x: placement.positionMm.x, y: placement.positionMm.y },
+              rotation: placement.rotationDeg,
+              elevationOffsetMm: placement.elevationOffsetMm,
               color: preset.defaultColor,
               finishColor: preset.defaultColor,
               dimensions: {
@@ -1321,7 +1790,7 @@ export function Viewport3D() {
               floorId: activeFloor.id,
               name: newProp.name,
               propType: newProp.propType,
-              rotation: 0,
+              rotation: newProp.rotation,
               position: newProp.position,
             });
             selectSubElement({ type: 'prop', id: newPropId });
@@ -1348,6 +1817,29 @@ export function Viewport3D() {
     };
 
     const handleMouseMove = (e: MouseEvent) => {
+      if (activePlacementPresetRef.current) {
+        const rect = container.getBoundingClientRect();
+        const mouse = new THREE.Vector2(
+          ((e.clientX - rect.left) / rect.width) * 2 - 1,
+          -((e.clientY - rect.top) / rect.height) * 2 + 1
+        );
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(mouse, camera);
+
+        const activeFloor = currentProject.floors.find(f => 
+          selectedFloorFilter === 'all' ? f.id === currentProject.activeFloorId : f.id === selectedFloorFilter
+        ) || currentProject.floors[0];
+        if (activeFloor) {
+          const floorElevM = (activeFloor.elevation || 0) / 1000;
+          const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -floorElevM);
+          const intersection = new THREE.Vector3();
+          if (raycaster.ray.intersectPlane(floorPlane, intersection)) {
+            lastMouseIntersectionRef.current = intersection.clone();
+            updatePlacementPreviewRef.current?.(intersection);
+          }
+        }
+      }
+
       if (!walkthroughMode) return;
       if (document.pointerLockElement === container) {
         wtController.handleMouseMove(e.movementX, e.movementY);
@@ -1370,6 +1862,50 @@ export function Viewport3D() {
       const elapsed = performance.now() - pointerDownTime;
 
       if (dist < 6 && elapsed < 400 && document.pointerLockElement !== container) {
+        // If placing a furniture item in 3D mode
+        if (activePlacementPresetRef.current && activePlacementStateRef.current) {
+          const { preset, activeFloorId, placement } = activePlacementStateRef.current;
+          const newPropId = uuidv4();
+          const newProp: Prop = {
+            id: newPropId,
+            floorId: activeFloorId,
+            roomId: placement.roomId,
+            name: preset.name,
+            category: preset.category,
+            propType: preset.propType,
+            position: { x: placement.positionMm.x, y: placement.positionMm.y },
+            rotation: placement.rotationDeg,
+            elevationOffsetMm: placement.elevationOffsetMm,
+            color: preset.defaultColor,
+            finishColor: preset.defaultColor,
+            dimensions: {
+              width: preset.dimensions.width,
+              depth: preset.dimensions.depth,
+              height: preset.dimensions.height || 800,
+            },
+            shape: preset.shape,
+          };
+
+          addProp(activeFloorId, newProp);
+          setSelected3DEntity({
+            type: 'prop',
+            id: newPropId,
+            floorId: activeFloorId,
+            name: newProp.name,
+            propType: newProp.propType,
+            rotation: newProp.rotation,
+            position: newProp.position,
+          });
+          selectSubElement({ type: 'prop', id: newPropId });
+
+          setActivePlacementPreset(null);
+          activePlacementStateRef.current = null;
+          if (placementPreviewGroupRef.current) {
+            placementPreviewGroupRef.current.visible = false;
+          }
+          return;
+        }
+
         const rect = container.getBoundingClientRect();
         const mouse = new THREE.Vector2(
           ((e.clientX - rect.left) / rect.width) * 2 - 1,
@@ -1432,6 +1968,8 @@ export function Viewport3D() {
 
     // Cleanup & Hardened GPU Resource Disposal
     return () => {
+      placementPreviewGroupRef.current = null;
+      updatePlacementPreviewRef.current = null;
       cancelAnimationFrame(animationFrameId);
       resizeObserver.disconnect();
       window.removeEventListener('keydown', handleKeyDown);
@@ -1448,7 +1986,10 @@ export function Viewport3D() {
       }
       renderer.dispose();
       controls.dispose();
+      disposePBRMaterialCache();
       scene.clear();
+      sceneRef.current = null;
+      cameraTransitionRef.current = null;
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }
@@ -1462,36 +2003,169 @@ export function Viewport3D() {
     floorFinish,
     wallFinish,
     walkthroughMode,
+    setWalkthroughMode,
     selected3DEntity,
     selectSubElement,
     addProp,
     deleteProp,
-    updatePropCustomization
+    updatePropCustomization,
+    rotatePlacement,
+    setActivePlacementPreset
   ]);
 
-  const handleCameraPreset = (preset: 'iso' | 'top' | 'front') => {
+  const transitionCameraTo = (targetPos: THREE.Vector3, targetLookAt: THREE.Vector3, durationMs = 450) => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+    cameraTransitionRef.current = {
+      startTime: performance.now(),
+      duration: durationMs,
+      startPos: camera.position.clone(),
+      endPos: targetPos.clone(),
+      startTarget: controls.target.clone(),
+      endTarget: targetLookAt.clone(),
+    };
+  };
+
+  const handleCameraPreset = (preset: 'iso' | 'top' | 'front' | 'side') => {
     setCameraPreset(preset);
     const camera = cameraRef.current;
     const controls = controlsRef.current;
     if (!camera || !controls) return;
 
     if (preset === 'iso') {
-      camera.position.set(15, 18, 20);
-      controls.target.set(0, 1.5, 0);
+      transitionCameraTo(new THREE.Vector3(15, 18, 20), new THREE.Vector3(0, 1.5, 0), 450);
     } else if (preset === 'top') {
-      camera.position.set(0, 32, 0.1);
-      controls.target.set(0, 0, 0);
+      transitionCameraTo(new THREE.Vector3(0, 32, 0.05), new THREE.Vector3(0, 0, 0), 450);
     } else if (preset === 'front') {
-      camera.position.set(0, 4, 25);
-      controls.target.set(0, 1.5, 0);
+      transitionCameraTo(new THREE.Vector3(0, 4, 25), new THREE.Vector3(0, 1.5, 0), 450);
+    } else if (preset === 'side') {
+      transitionCameraTo(new THREE.Vector3(25, 4, 0), new THREE.Vector3(0, 1.5, 0), 450);
     }
+  };
+
+  const handleFocusSelection = () => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+
+    const targetBox = new THREE.Box3();
+    let hasTarget = false;
+
+    if (selected3DEntity && sceneRef.current) {
+      sceneRef.current.traverse((child) => {
+        if (child.userData?.id === selected3DEntity.id && child.userData?.type === selected3DEntity.type) {
+          targetBox.setFromObject(child);
+          hasTarget = true;
+        }
+      });
+    }
+
+    if (!hasTarget) {
+      // Focus on active floor model bounds
+      const activeFloor = currentProject?.floors.find(f => f.id === currentProject.activeFloorId) || currentProject?.floors[0];
+      if (activeFloor && activeFloor.walls.length > 0) {
+        activeFloor.walls.forEach(w => {
+          const p1x = w.start.x / 1000 - centerOffset.x;
+          const p1z = w.start.y / 1000 - centerOffset.z;
+          const p2x = w.end.x / 1000 - centerOffset.x;
+          const p2z = w.end.y / 1000 - centerOffset.z;
+          targetBox.expandByPoint(new THREE.Vector3(p1x, 0, p1z));
+          targetBox.expandByPoint(new THREE.Vector3(p2x, (activeFloor.height || 2800) / 1000, p2z));
+        });
+        hasTarget = true;
+      }
+    }
+
+    if (!hasTarget || targetBox.isEmpty()) {
+      targetBox.set(new THREE.Vector3(-10, 0, -10), new THREE.Vector3(10, 3, 10));
+    }
+
+    const center = new THREE.Vector3();
+    const size = new THREE.Vector3();
+    targetBox.getCenter(center);
+    targetBox.getSize(size);
+
+    const maxDim = Math.max(size.x, size.y, size.z, 2.0);
+    const fovRad = (camera.fov * Math.PI) / 360;
+    const dist = Math.min(60, Math.max(2.5, (maxDim / 2) / Math.tan(fovRad) * 1.35));
+
+    let dir = camera.position.clone().sub(controls.target).normalize();
+    if (dir.lengthSq() < 0.1 || Math.abs(dir.y) > 0.98) {
+      dir = new THREE.Vector3(0.6, 0.5, 0.6).normalize();
+    }
+    const newPos = center.clone().add(dir.multiplyScalar(dist));
+    newPos.y = Math.max(0.8, newPos.y);
+
+    transitionCameraTo(newPos, center, 450);
+  };
+
+  const handleDolly = (factor: number) => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+    const offset = camera.position.clone().sub(controls.target);
+    const newDist = Math.max(controls.minDistance, Math.min(controls.maxDistance, offset.length() * factor));
+    offset.setLength(newDist);
+    camera.position.copy(controls.target).add(offset);
     controls.update();
   };
+
+  const handleOrbitAzimuth = (angleRad: number) => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+    const offset = camera.position.clone().sub(controls.target);
+    offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), angleRad);
+    camera.position.copy(controls.target).add(offset);
+    controls.update();
+  };
+
+  useEffect(() => {
+    handleCameraPresetRef.current = handleCameraPreset;
+    handleFocusSelectionRef.current = handleFocusSelection;
+    handleDollyRef.current = handleDolly;
+    handleOrbitAzimuthRef.current = handleOrbitAzimuth;
+  });
 
   const floorsList = currentProject?.floors || [];
 
   return (
-    <div className="w-full h-full relative select-none bg-slate-900 overflow-hidden font-mono" ref={containerRef}>
+    <div 
+      className={`w-full h-full relative select-none bg-slate-900 overflow-hidden font-mono ${
+        activePlacementPreset ? 'cursor-crosshair' : ''
+      }`} 
+      ref={containerRef}
+    >
+      {/* Active 3D Placement Prompt Banner */}
+      {activePlacementPreset && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 px-4 py-2 bg-slate-950/95 backdrop-blur-md border border-indigo-500/60 rounded-full shadow-2xl text-xs text-slate-100 pointer-events-auto">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="font-semibold text-white">
+              Placing: {PROP_PRESETS[activePlacementPreset]?.name || 'Furniture Item'}
+            </span>
+          </div>
+          <div className="h-3 w-px bg-slate-700" />
+          <span className="text-slate-300">
+            Click floor to place • Press <kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 font-mono text-indigo-300">R</kbd> / <kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 font-mono text-indigo-300">Shift+R</kbd> to rotate
+          </span>
+          <button
+            onClick={() => {
+              setActivePlacementPreset(null);
+              activePlacementStateRef.current = null;
+              if (placementPreviewGroupRef.current) {
+                placementPreviewGroupRef.current.visible = false;
+              }
+            }}
+            className="ml-1 p-1 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition cursor-pointer"
+            title="Cancel placement (Esc)"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Top Floating Controls HUD */}
       <div className="absolute top-4 left-4 z-20 flex flex-wrap items-center gap-2 pointer-events-auto">
         {/* Back to 2D Plan Button */}
@@ -1600,14 +2274,14 @@ export function Viewport3D() {
         </button>
       </div>
 
-      {/* Top-Right Camera Angles & Reset */}
+      {/* Top-Right Camera Angles & Navigation HUD */}
       <div className="absolute top-4 right-4 z-20 flex items-center gap-1.5 pointer-events-auto bg-slate-950/90 backdrop-blur-md border border-slate-700 p-1 rounded-md shadow-sm text-xs">
         <button
           onClick={() => handleCameraPreset('iso')}
           className={`px-2 py-1 rounded transition-colors cursor-pointer ${
             cameraPreset === 'iso' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
           }`}
-          title="Isometric 45° Angle"
+          title="Isometric 45° Angle (4 or H)"
         >
           Iso
         </button>
@@ -1616,7 +2290,7 @@ export function Viewport3D() {
           className={`px-2 py-1 rounded transition-colors cursor-pointer ${
             cameraPreset === 'top' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
           }`}
-          title="Top-Down Axonometric View"
+          title="Top-Down Axonometric View (1)"
         >
           Top
         </button>
@@ -1625,15 +2299,46 @@ export function Viewport3D() {
           className={`px-2 py-1 rounded transition-colors cursor-pointer ${
             cameraPreset === 'front' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
           }`}
-          title="Front Elevation Angle"
+          title="Front Elevation Angle (2)"
         >
           Front
+        </button>
+        <button
+          onClick={() => handleCameraPreset('side')}
+          className={`px-2 py-1 rounded transition-colors cursor-pointer ${
+            cameraPreset === 'side' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+          }`}
+          title="Side Right Elevation Angle (3)"
+        >
+          Side
+        </button>
+        <div className="h-4 w-px bg-slate-800 mx-0.5" />
+        <button
+          onClick={handleFocusSelection}
+          className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded transition-colors cursor-pointer"
+          title="Frame / Focus Selection or Floor (F)"
+        >
+          <Focus className="h-3.5 w-3.5" />
+        </button>
+        <button
+          onClick={() => handleDolly(0.85)}
+          className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded transition-colors cursor-pointer"
+          title="Zoom In (+)"
+        >
+          <ZoomIn className="h-3.5 w-3.5" />
+        </button>
+        <button
+          onClick={() => handleDolly(1.15)}
+          className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded transition-colors cursor-pointer"
+          title="Zoom Out (-)"
+        >
+          <ZoomOut className="h-3.5 w-3.5" />
         </button>
         <div className="h-4 w-px bg-slate-800 mx-0.5" />
         <button
           onClick={() => handleCameraPreset('iso')}
-          className="p-1 text-slate-400 hover:text-white rounded transition-colors cursor-pointer"
-          title="Reset Camera Target"
+          className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded transition-colors cursor-pointer"
+          title="Reset Camera (H / Home)"
         >
           <RotateCcw className="h-3.5 w-3.5" />
         </button>

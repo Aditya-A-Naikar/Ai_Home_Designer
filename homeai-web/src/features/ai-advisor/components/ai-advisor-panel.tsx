@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 export function AIAdvisorPanel() {
   const { currentProject, applyPlanGenerationActions } = useProjectStore();
   const { messages, isLoading, sendMessage, applySuggestion } = useAIAdvisor(currentProject?.id || '');
-  const { aiAdvisorOpen, setAIAdvisorOpen, selectedSubElement, selectSubElement } = useCanvasStore();
+  const { activeDrawer, closeDrawer, selectedSubElement, selectSubElement } = useCanvasStore();
   const [input, setInput] = useState('');
   const [selectedSwatches, setSelectedSwatches] = useState<Record<string, string>>({});
   const [appliedProposals, setAppliedProposals] = useState<Record<string, string>>({});
@@ -29,18 +29,7 @@ export function AIAdvisorPanel() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
-  if (!aiAdvisorOpen) {
-    return (
-      <button 
-        onClick={() => setAIAdvisorOpen(true)}
-        className="absolute top-16 right-0 bg-white border border-r-0 border-slate-200 p-2.5 rounded-l-xl shadow-md text-indigo-600 hover:bg-indigo-50 z-20 flex items-center gap-1.5 font-medium text-xs cursor-pointer transition-all hover:pr-3.5"
-        title="Open AI Architectural Advisor"
-      >
-        <Bot className="h-5 w-5" />
-        <span className="hidden sm:inline font-semibold">AI Co-Pilot</span>
-      </button>
-    );
-  }
+  if (activeDrawer !== 'ai') return null;
 
   const handleSend = (textToSend?: string) => {
     const text = textToSend || input;
@@ -70,7 +59,7 @@ export function AIAdvisorPanel() {
   };
 
   return (
-    <div className="w-96 min-w-[340px] max-w-[420px] border-l bg-white flex flex-col h-full shrink-0 relative shadow-sm overflow-hidden z-10">
+    <div className="w-80 border-l bg-white flex flex-col h-full shrink-0 relative shadow-sm overflow-hidden z-10">
       {/* Header */}
       <div className="h-14 border-b flex items-center justify-between px-4 bg-slate-50 shrink-0">
         <div className="flex items-center gap-2">
@@ -85,7 +74,7 @@ export function AIAdvisorPanel() {
           </div>
         </div>
         <button 
-          onClick={() => setAIAdvisorOpen(false)} 
+          onClick={() => closeDrawer()} 
           className="text-slate-400 hover:text-slate-600 p-1 rounded-md hover:bg-slate-200 transition-colors cursor-pointer"
           title="Minimize Co-Pilot"
         >

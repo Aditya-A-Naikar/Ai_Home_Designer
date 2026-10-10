@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useProjectStore } from '@/store/project-store';
 import { useCanvasStore } from '@/store/canvas-store';
 import { ARCHITECTURAL_DESIGN_PRESETS, DesignPresetSpec } from '@/core/geometry/design-presets';
-import { FLOOR_FINISHES, WALL_FINISHES, FloorFinishType, WallFinishType } from '@/core/geometry/pbr-materials';
+import { FLOOR_FINISHES, WALL_FINISHES, FURNITURE_FINISHES, FloorFinishType, WallFinishType, FurnitureFinishType } from '@/core/geometry/pbr-materials';
 import { PROP_PRESETS } from '@/core/ai/spatial-planner';
 import { Prop, PropCategory } from '@/core/domain/types';
 import { v4 as uuidv4 } from 'uuid';
@@ -348,10 +348,45 @@ export function Viewport3DCustomizer({
                   </div>
                 </div>
 
+                {/* PBR Furniture Finish Presets */}
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-600 block mb-1.5">
+                    PBR Furniture Finish
+                  </label>
+                  <div className="grid grid-cols-2 gap-1.5 max-h-36 overflow-y-auto pr-1">
+                    {(Object.keys(FURNITURE_FINISHES) as FurnitureFinishType[]).map((finKey) => {
+                      const fin = FURNITURE_FINISHES[finKey];
+                      return (
+                        <button
+                          key={finKey}
+                          onClick={() => {
+                            if (activeFloor) {
+                              updatePropCustomization(activeFloor.id, selectedEntity.id, {
+                                finishMaterial: finKey,
+                                finishColor: '#' + fin.colorHex.toString(16).padStart(6, '0'),
+                              });
+                            }
+                          }}
+                          className="p-1.5 rounded-lg border border-slate-200 hover:border-indigo-500 text-left bg-slate-50/50 hover:bg-white transition-all cursor-pointer flex items-center gap-1.5"
+                          title={fin.description}
+                        >
+                          <span
+                            className="w-3 h-3 rounded-full border border-slate-300 shrink-0"
+                            style={{ backgroundColor: '#' + fin.colorHex.toString(16).padStart(6, '0') }}
+                          />
+                          <span className="text-[10px] font-semibold text-slate-800 truncate">
+                            {fin.name}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 {/* Upholstery & Finish Color */}
                 <div>
                   <label className="text-[11px] font-semibold text-slate-600 block mb-1.5">
-                    Finish & Upholstery Material
+                    Finish & Upholstery Color
                   </label>
                   <div className="grid grid-cols-6 gap-2">
                     {propColors.map((c) => (

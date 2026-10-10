@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Plus, Search, FolderOpen, Upload, Home, Box, Layers, LayoutGrid, List } from "lucide-react";
 import { Project } from "@/core/domain/types";
 import { projectRepository } from "@/infrastructure/persistence/local-storage-project-repository";
@@ -10,6 +11,7 @@ import { parseProjectJson } from "@/core/export/json-exporter";
 import { ProjectCard } from "./project-card";
 
 export function ProjectDashboard() {
+  const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTypology, setSelectedTypology] = useState<string>("all");
@@ -56,8 +58,8 @@ export function ProjectDashboard() {
 
   const handleLoadDemo = async () => {
     try {
-      await projectRepository.seedDemo();
-      await loadProjects();
+      const demo = await projectRepository.seedDemo();
+      router.push(`/editor/${demo.id}`);
     } catch (err) {
       console.error("Failed to seed demo:", err);
     }
@@ -69,7 +71,7 @@ export function ProjectDashboard() {
     try {
       const myHome = getMyHomeProject();
       await projectRepository.save(myHome);
-      await loadProjects();
+      router.push(`/editor/${myHome.id}`);
     } catch (err) {
       console.error("Failed to load My Home:", err);
     }
@@ -85,8 +87,7 @@ export function ProjectDashboard() {
       const parseResult = parseProjectJson(content);
       if (parseResult.success && parseResult.project) {
         await projectRepository.save(parseResult.project);
-        await loadProjects();
-        alert(`Successfully imported: "${parseResult.project.name}"`);
+        router.push(`/editor/${parseResult.project.id}`);
       } else {
         alert(`Failed to import project: ${parseResult.error || "Invalid file"}`);
       }
@@ -116,15 +117,15 @@ export function ProjectDashboard() {
       {/* Studio Header Bar */}
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between border-b border-slate-800 pb-6">
         <div>
-          <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-cyan-400">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-cyan-400">
             <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
-            BIM PROJECT REPOSITORY
+            Project Dashboard
           </div>
-          <h1 className="mt-1 text-2xl sm:text-3xl font-black tracking-tight text-white font-mono">
+          <h1 className="mt-1 text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
             Architectural Workspace
           </h1>
           <p className="mt-1 text-xs sm:text-sm text-slate-400">
-            Draft, inspect, and simulate residential floor plans across 2D CAD and 3D WebGL models.
+            Create, manage, and explore residential floor plans in 2D CAD and 3D WebGL.
           </p>
         </div>
 
@@ -133,7 +134,7 @@ export function ProjectDashboard() {
           <button
             type="button"
             onClick={handleLoadMyHome}
-            className="inline-flex items-center gap-1.5 rounded border border-cyan-800/80 bg-cyan-950/40 hover:bg-cyan-900/50 px-3 py-2 text-xs font-mono font-medium text-cyan-300 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-800/80 bg-cyan-950/40 hover:bg-cyan-900/50 px-3 py-2 text-xs font-medium text-cyan-300 transition-colors cursor-pointer"
           >
             <Home className="h-3.5 w-3.5 text-cyan-400" />
             <span>Open &quot;My Home&quot;</span>
@@ -142,7 +143,7 @@ export function ProjectDashboard() {
           <button
             type="button"
             onClick={handleLoadDemo}
-            className="inline-flex items-center gap-1.5 rounded border border-slate-700 bg-slate-900 hover:bg-slate-800 px-3 py-2 text-xs font-mono font-medium text-slate-300 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 px-3 py-2 text-xs font-medium text-slate-300 transition-colors cursor-pointer"
           >
             <Box className="h-3.5 w-3.5 text-amber-400" />
             <span>Sample Villa</span>
@@ -151,7 +152,7 @@ export function ProjectDashboard() {
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="inline-flex items-center gap-1.5 rounded border border-slate-700 bg-slate-900 hover:bg-slate-800 px-3 py-2 text-xs font-mono font-medium text-slate-300 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 px-3 py-2 text-xs font-medium text-slate-300 transition-colors cursor-pointer"
           >
             <Upload className="h-3.5 w-3.5 text-emerald-400" />
             <span>Import (.json)</span>
@@ -167,31 +168,31 @@ export function ProjectDashboard() {
 
           <Link
             href="/projects/new"
-            className="inline-flex items-center gap-2 rounded bg-cyan-500 hover:bg-cyan-400 px-4 py-2 text-xs font-mono font-bold text-slate-950 transition-all shadow-sm active:translate-y-0.5"
+            className="inline-flex items-center gap-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 px-4 py-2 text-xs font-bold text-slate-950 transition-all shadow-sm active:translate-y-0.5"
           >
             <Plus className="h-4 w-4" />
-            <span>New CAD Project</span>
+            <span>New Project</span>
           </Link>
         </div>
       </div>
 
       {/* Studio Analytics Metric Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono text-xs">
-        <div className="p-3.5 rounded-lg bg-slate-900/80 border border-slate-800">
-          <span className="text-[10px] text-slate-500 uppercase tracking-wider block">Total Projects</span>
-          <span className="text-lg font-bold text-white mt-1 block">{projects.length}</span>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+        <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800">
+          <span className="text-xs text-slate-400 uppercase tracking-wider block font-semibold">Total Projects</span>
+          <span className="text-2xl font-extrabold text-white mt-1 block">{projects.length}</span>
         </div>
-        <div className="p-3.5 rounded-lg bg-slate-900/80 border border-slate-800">
-          <span className="text-[10px] text-slate-500 uppercase tracking-wider block">Total Levels</span>
-          <span className="text-lg font-bold text-cyan-400 mt-1 block">{totalFloorsCount} Floors</span>
+        <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800">
+          <span className="text-xs text-slate-400 uppercase tracking-wider block font-semibold">Total Levels</span>
+          <span className="text-2xl font-extrabold text-cyan-400 mt-1 block">{totalFloorsCount} Floors</span>
         </div>
-        <div className="p-3.5 rounded-lg bg-slate-900/80 border border-slate-800">
-          <span className="text-[10px] text-slate-500 uppercase tracking-wider block">Modeled Area</span>
-          <span className="text-lg font-bold text-emerald-400 mt-1 block">{totalAreaSumM2} m²</span>
+        <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800">
+          <span className="text-xs text-slate-400 uppercase tracking-wider block font-semibold">Modeled Area</span>
+          <span className="text-2xl font-extrabold text-emerald-400 mt-1 block">{totalAreaSumM2} m²</span>
         </div>
-        <div className="p-3.5 rounded-lg bg-slate-900/80 border border-slate-800">
-          <span className="text-[10px] text-slate-500 uppercase tracking-wider block">Schema Specification</span>
-          <span className="text-lg font-bold text-indigo-300 mt-1 block">BIM v1.1 JSON</span>
+        <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800">
+          <span className="text-xs text-slate-400 uppercase tracking-wider block font-semibold">Design Standards</span>
+          <span className="text-2xl font-extrabold text-indigo-300 mt-1 block">NBC & IBC</span>
         </div>
       </div>
 
@@ -203,14 +204,14 @@ export function ProjectDashboard() {
           <input
             type="text"
             placeholder="Search projects by title..."
-            className="w-full rounded bg-slate-900 border border-slate-800 pl-9 pr-3 py-2 text-xs font-mono text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+            className="w-full rounded-lg bg-slate-900 border border-slate-800 pl-9 pr-3 py-2 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
 
         {/* Typology Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 text-xs font-mono">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 text-xs">
           {[
             { id: "all", label: "All" },
             { id: "duplex_vertical", label: "Duplex" },
@@ -222,7 +223,7 @@ export function ProjectDashboard() {
               key={tab.id}
               type="button"
               onClick={() => setSelectedTypology(tab.id)}
-              className={`px-3 py-1.5 rounded transition-colors whitespace-nowrap ${
+              className={`px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap font-medium cursor-pointer ${
                 selectedTypology === tab.id
                   ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
                   : "bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200"
@@ -234,11 +235,11 @@ export function ProjectDashboard() {
         </div>
 
         {/* Layout Switcher (Grid vs Table) */}
-        <div className="hidden sm:flex items-center rounded border border-slate-800 bg-slate-900 p-0.5">
+        <div className="hidden sm:flex items-center rounded-lg border border-slate-800 bg-slate-900 p-0.5">
           <button
             type="button"
             onClick={() => setViewLayout("grid")}
-            className={`p-1.5 rounded transition-colors ${
+            className={`p-1.5 rounded-md transition-colors cursor-pointer ${
               viewLayout === "grid" ? "bg-slate-800 text-cyan-400" : "text-slate-500 hover:text-slate-300"
             }`}
             title="Grid View"
@@ -248,10 +249,10 @@ export function ProjectDashboard() {
           <button
             type="button"
             onClick={() => setViewLayout("table")}
-            className={`p-1.5 rounded transition-colors ${
+            className={`p-1.5 rounded-md transition-colors cursor-pointer ${
               viewLayout === "table" ? "bg-slate-800 text-cyan-400" : "text-slate-500 hover:text-slate-300"
             }`}
-            title="Dense Table View"
+            title="Table View"
           >
             <List className="h-4 w-4" />
           </button>
@@ -270,14 +271,14 @@ export function ProjectDashboard() {
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl bg-slate-900 border border-slate-800 text-cyan-400 mb-4">
             <FolderOpen className="h-7 w-7" />
           </div>
-          <h2 className="text-lg font-bold text-white font-mono">No CAD projects found in workspace</h2>
+          <h2 className="text-lg font-bold text-white">No projects found in workspace</h2>
           <p className="mt-2 text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
-            Create a new residential blueprint from scratch or initialize our sample Duplex Villa model.
+            Create a new residential blueprint from scratch or explore our pre-configured Duplex Villa model.
           </p>
           <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link
               href="/projects/new"
-              className="inline-flex items-center gap-2 rounded bg-cyan-500 hover:bg-cyan-400 px-5 py-2.5 text-xs font-mono font-bold text-slate-950 transition-colors"
+              className="inline-flex items-center gap-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 px-5 py-2.5 text-xs font-bold text-slate-950 transition-colors"
             >
               <Plus className="h-4 w-4" />
               <span>Create New Project</span>
@@ -285,7 +286,7 @@ export function ProjectDashboard() {
             <button
               type="button"
               onClick={handleLoadDemo}
-              className="inline-flex items-center gap-2 rounded border border-slate-700 bg-slate-900 hover:bg-slate-800 px-5 py-2.5 text-xs font-mono font-semibold text-slate-300 transition-colors"
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 px-5 py-2.5 text-xs font-semibold text-slate-300 transition-colors cursor-pointer"
             >
               <Box className="h-4 w-4 text-cyan-400" />
               <span>Explore Sample Villa</span>
@@ -293,7 +294,7 @@ export function ProjectDashboard() {
           </div>
         </div>
       ) : filteredProjects.length === 0 ? (
-        <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-12 text-center text-xs font-mono text-slate-400">
+        <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-12 text-center text-xs text-slate-400">
           No architectural projects matched your query &ldquo;{searchQuery}&rdquo;.
         </div>
       ) : viewLayout === "grid" ? (

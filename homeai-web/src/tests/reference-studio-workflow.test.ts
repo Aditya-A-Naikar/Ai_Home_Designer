@@ -53,11 +53,14 @@ describe('Reference Studio Unified Workflow & Contextual AI Execution', () => {
       setActiveStage(5);
       setViewMode('3d');
       setCatalogDockOpen(true);
-      setMaterialsDockOpen(true);
       expect(useCanvasStore.getState().activeStage).toBe(5);
       expect(useCanvasStore.getState().viewMode).toBe('3d');
       expect(useCanvasStore.getState().catalogDockOpen).toBe(true);
+      expect(useCanvasStore.getState().materialsDockOpen).toBe(false);
+
+      setMaterialsDockOpen(true);
       expect(useCanvasStore.getState().materialsDockOpen).toBe(true);
+      expect(useCanvasStore.getState().catalogDockOpen).toBe(false);
 
       // Jump to Stage 6 (First-Person Walkthrough)
       setActiveStage(6);

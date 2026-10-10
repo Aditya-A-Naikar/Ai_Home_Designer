@@ -49,7 +49,8 @@ export function createProject(params: CreateProjectParams): Project {
   const now = new Date().toISOString();
 
   const isDuplex = params.typology === "duplex_vertical" || params.typology === "duplex_side_by_side";
-  const initialFloorCount = isDuplex ? Math.max(2, params.floorsCount) : Math.max(1, Math.min(params.floorsCount, 5));
+  const count = typeof params.floorsCount === "number" && !isNaN(params.floorsCount) ? params.floorsCount : 1;
+  const initialFloorCount = isDuplex ? Math.max(2, count) : Math.max(1, Math.min(count, 5));
   const floors: Floor[] = [];
 
   for (let i = 0; i < initialFloorCount; i++) {
@@ -72,6 +73,9 @@ export function createProject(params: CreateProjectParams): Project {
       stairs: [],
       voids: [],
       columns: [],
+      electricalPoints: [],
+      plumbingFixtures: [],
+      hvacPoints: [],
     });
   }
 
